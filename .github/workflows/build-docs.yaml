@@ -30,7 +30,7 @@ jobs:
       - name: Run sphinx
         uses: ammaraskar/sphinx-action@master
         with:
-          pre-build-command: "pip install sphinx kentigern"
+          pre-build-command: "pip install -U sphinx>8 kentigern"
           docs-folder: "docs/"
       - uses: actions/upload-pages-artifact@v3
         with:

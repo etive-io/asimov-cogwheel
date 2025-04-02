@@ -24,10 +24,11 @@ classifiers = [
 ]
 requires-python = ">=3.8"
 dependencies = [
-	"asimov>=0.5.0",
-	"lalsuite>=7.14",
-	"pesummary",
-	"nbconvert",
+	     "click",
+	     "asimov>=0.5.0",
+	     "lalsuite>=7.14",
+	     "pesummary",
+	     "nbconvert",
 ]
 
 [project.optional-dependencies]
