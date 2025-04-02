@@ -17,7 +17,7 @@ class Cogwheel(Pipeline):
 
     """
 
-    with importlib.resources.path("dingo.asimov", "datafind_template.yml") as template_file:
+    with importlib.resources.path("cogwheel", "asimov_template.yml") as template_file:
         config_template = template_file
 
     name = "cogwheel"
