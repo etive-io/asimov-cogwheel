@@ -1,0 +1,52 @@
+[build-system]
+requires = [
+	"setuptools>=61.0",
+	"setuptools_scm[toml]>=3.4.3",
+	"wheel",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+version_scheme = "release-branch-semver"
+
+[project]
+name = "asimov-cogwheel"
+dynamic = ["version"]
+authors = [
+	{ name = "Daniel Williams", email = "daniel.williams@ligo.org" },
+]
+description = "An asimov interface to the cogwheel parameter estimation code."
+readme = "README.md"
+license = "MIT" 
+classifiers = [
+	"Programming Language :: Python :: 3",
+	"Operating System :: OS Independent"
+]
+requires-python = ">=3.8"
+dependencies = [
+	"asimov>=0.5.0",
+	"lalsuite>=7.14",
+	"pesummary",
+	"nbconvert",
+]
+
+[project.optional-dependencies]
+docs = [
+	"sphinx",
+	"kentigern",
+]
+
+[project.scripts]
+#peconfigurator = "peconfigurator.proc_samples:main"
+
+[project.urls]
+#"Source code" = "https://"
+
+[tool.setuptools]
+include-package-data = true
+packages = [
+	"asimov_cogwheel",
+]
+
+[project.entry-points.'asimov.pipelines']
+#peconfigurator = 'peconfigurator.asimov:AsimovPipeline'
