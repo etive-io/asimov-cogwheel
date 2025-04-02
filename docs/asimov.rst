@@ -26,7 +26,7 @@ First, the defaults blueprint should look something like this:
 	 accounting group: ligo.prod.o4.cbc.pe.bilby
 	 request cpus: 1
        likelihood:
-         marginalisation:
+         marginalization:
 	   distance: True
        priors:
          class: MarginalizedDistanceLVKPrior
