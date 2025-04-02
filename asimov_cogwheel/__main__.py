@@ -52,7 +52,7 @@ def inference(config):
     LOGLEVEL = os.environ.get('LOGLEVEL', 'INFO').upper()
     logging.basicConfig(level=LOGLEVEL, format="%(asctime)s %(message)s")
     
-    parentdir = 'test'  # Directory that will contain parameter estimation runs
+    parentdir = "sampling"
 
     config = pipeconfig.parse_config(config)
     
@@ -100,3 +100,58 @@ def inference(config):
 
     rundir = sampler.get_rundir(parentdir)
     sampler.run(rundir)  # Will take a while
+
+@click.option("--config", help="A configuration file.")
+@cogwheelpipe.command()
+def results(config):
+    """
+    Post process the results file and convert them to PESummary-friendly values.
+    """
+
+    from pyarrow import feather
+
+    import numpy as np
+    from bilby.gw.conversion import (
+        component_masses_to_chirp_mass,
+        symmetric_mass_ratio_to_mass_ratio)
+    from pesummary.gw.conversions.cosmology import (
+        z_from_dL_exact,
+        mchirp_source_from_mchirp_z)
+    from pesummary.gw.conversions.spins import chi_p
+    from pesummary.gw.conversions.mass import component_masses_from_mchirp_q
+    from pesummary.gw import reweight
+    from pesummary.utils.samples_dict import SamplesDict
+
+    config = pipeconfig.parse_config(config)
+
+    filename = os.path.join(
+        "sampling",
+        config['prior']['class'],
+        config['event']['name'],
+        "run_0",
+        "samples.feather"
+    )
+    
+    data = feather.read_feather(filename)
+    parameters = list(data.columns)
+    parameters[0] = "chirp_mass"
+    data.columns = parameters
+    data['mass_ratio'] = data['m2']/data['m1']
+    data['spin_1x'] = data['s1x_n']
+    data['spin_1y'] = data['s1y_n']
+    data['spin_1z'] = data['s1z']
+    data['spin_2x'] = data['s2x_n']
+    data['spin_2y'] = data['s2y_n']
+    data['spin_2z'] = data['s2z']
+    in_range = [0<=value<=1 for value in data['mass_ratio']]
+    data['luminosity_distance'] = data.pop("d_luminosity")
+    data['redshift'] = z_from_dL_exact(data['luminosity_distance'])
+    data['chirp_mass_source'] = mchirp_source_from_mchirp_z(data['chirp_mass'], data['redshift'])
+    data['chi_eff'] = (data['spin_1z'] + data['spin_2z'] * data['mass_ratio']) / (1 + data['mass_ratio'])
+    data['mass_1'] = data['m1']
+    data['mass_2'] = data['m2']
+    data['chi_p'] = chi_p(data['mass_1'], data['mass_2'], 
+                          data['spin_1x'], data['spin_1y'], 
+                          data['spin_2x'], data['spin_2y'])  
+    data_dict = SamplesDict(list(data.columns), np.array(data.values).T)
+    data_dict.write(file_format="pesummary", package="gw", outdir="./", label=config['label'], hdf5=True)

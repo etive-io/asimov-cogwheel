@@ -4,6 +4,7 @@ Interfaces with asimov
 import importlib
 import configparser
 import os
+import glob
 from asimov import logger, config
 from asimov.utils import set_directory
 from asimov.pipeline import Pipeline, PipelineException, PipelineLogger
@@ -99,6 +100,25 @@ class Cogwheel(Pipeline):
             submit_description=analysis_description,
         )
 
+        results_command = f"results --config {ini}"
+        results_description = htcondor.Submit(
+            executable=executable,
+            arguments=analysis_command,
+            log=os.path.join(rundir, 'cogwheelpipe-results.log'),
+            output=os.path.join(rundir, 'cogwheelpipe-results.out'),
+            error=os.path.join(rundir, 'cogwheelpipe-results.err'),
+            request_cpus='1',
+            request_memory='2048MB',
+            request_disk='10GB',
+            getenv="True",
+            accounting_group_user=config.get('condor', 'user'),
+            accounting_group=self.production.meta['scheduler']["accounting group"]
+        )
+        results_layer = analysis_layer.child_layer(
+            name='cogwheelpipe-results',
+            submit_description=results_description,
+        )
+        
         dag_file = dags.write_dag(dag, rundir, dag_file_name="cogwheel.dag")
 
         logger.info(f"DAG file written to {dag_file}")
@@ -129,3 +149,17 @@ class Cogwheel(Pipeline):
             cluster_id = schedd.submit(dag_submit).cluster()
 
         self.clusterid = cluster_id
+
+    def detect_completion(self):
+        """
+        Check for the production of the posterior file to signal that the job has completed.
+        """
+        self.logger.info("Checking if the dingo job has completed")
+
+        results_dir = glob.glob(f"{self.production.rundir}/posterior_samples.h5")
+        if len(results_dir) > 0:
+            self.logger.info("Results files found, the job is finished.")
+            return True
+        else:
+            self.logger.info("No results files found.")
+            return False

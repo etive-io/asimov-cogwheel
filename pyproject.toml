@@ -29,6 +29,7 @@ dependencies = [
 	     "lalsuite>=7.14",
 	     "pesummary",
 	     "nbconvert",
+	     "bilby",
 ]
 
 [project.optional-dependencies]
