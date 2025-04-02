@@ -57,7 +57,7 @@ class Cogwheel(Pipeline):
             self.production.rundir = rundir
 
             
-        dag = dags.DAG(dagman_config={"batchname": f"cogwheel/{self.production.event.name}/{self.production.name}"})
+        dag = dags.DAG(dagman_config={"Batch-Name": f"cogwheel/{self.production.event.name}/{self.production.name}"})
 
         executable = f"{os.path.join(config.get('pipelines', 'environment'), 'bin', self._pipeline_command)}"
         
@@ -84,9 +84,9 @@ class Cogwheel(Pipeline):
         analysis_description = htcondor.Submit(
             executable=executable,
             arguments=analysis_command,
-            log=os.path.join(rundir, 'cogwheelpipe-data.log'),
-            output=os.path.join(rundir, 'cogwheelpipe-data.out'),
-            error=os.path.join(rundir, 'cogwheelpipe-data.err'),
+            log=os.path.join(rundir, 'cogwheelpipe-inference.log'),
+            output=os.path.join(rundir, 'cogwheelpipe-inference.out'),
+            error=os.path.join(rundir, 'cogwheelpipe-inference.err'),
             request_cpus='1',
             request_memory='2048MB',
             request_disk='10GB',
