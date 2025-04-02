@@ -53,3 +53,12 @@ This should look something like this:
      relative binning:
        fiducial parameters:
          chirp mass: 30
+
+Save this to a file called ``cogwheel.yaml``.	 
+Then this can be added to the event in your project by running
+
+::
+
+   $ asimov apply -f cogwheel.yaml --event GW150914
+
+You can reuse exactly the same file for each event if you want them to use the same settings, and you only need to change the value of ``--event`` specified at the command line.
