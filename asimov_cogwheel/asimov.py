@@ -57,7 +57,7 @@ class Cogwheel(Pipeline):
             self.production.rundir = rundir
 
             
-        dag = dags.DAG(dagman_config={"Batch-Name": f"cogwheel/{self.production.event.name}/{self.production.name}"})
+        dag = dags.DAG()
 
         executable = f"{os.path.join(config.get('pipelines', 'environment'), 'bin', self._pipeline_command)}"
         
@@ -111,7 +111,9 @@ class Cogwheel(Pipeline):
         dag_file = "cogwheel.dag"
         with set_directory(self.production.rundir):
             dag_submit = htcondor.Submit.from_dag(
-                str(dag_file), {'force': 1}
+                str(dag_file),
+                {'force': 1,
+                 "batch-name": f"cogwheel/{self.production.event.name}/{self.production.name}"}
             )
 
             try:
