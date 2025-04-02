@@ -1,5 +1,6 @@
 name: "Build documentation"
-
+on:
+  - push
 jobs:
   docs:
     runs-on: ubuntu-latest
