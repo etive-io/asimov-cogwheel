@@ -22,7 +22,7 @@ label: {{ production.name }}
 event:
   name: {{ production.event.name }}
   fiducial parameters:
-    chirp mass: {{ likelihood['relative binning']['fidicual parameters']['chirp mass'] }}
+    chirp mass: {{ likelihood['relative binning']['fiducial parameters']['chirp mass'] }}
     
 waveform:
   approximant: {{ production.meta['waveform']['approximant'] }}

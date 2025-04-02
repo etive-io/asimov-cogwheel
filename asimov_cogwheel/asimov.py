@@ -17,10 +17,11 @@ class Cogwheel(Pipeline):
 
     """
 
-    with importlib.resources.path("cogwheel", "asimov_template.yml") as template_file:
+    with importlib.resources.path("asimov_cogwheel", "asimov_template.yaml") as template_file:
         config_template = template_file
 
     name = "cogwheel"
+    _pipeline_command = "cogwheelpipe"
 
     def __init__(self, production, category=None):
         super().__init__(production, category)
@@ -30,7 +31,7 @@ class Cogwheel(Pipeline):
             raise PipelineException
 
 
-    def build_dag(self):
+    def build_dag(self, dryrun=False):
         """
         Construct a DAG for this pipeline.
         """
@@ -56,11 +57,11 @@ class Cogwheel(Pipeline):
             self.production.rundir = rundir
 
             
-        dag = dags.DAG()
+        dag = dags.DAG(dagman_config={"batchname": f"cogwheel/{self.production.event.name}/{self.production.name}"})
 
-        executable = "cogwheelpipe"
+        executable = f"{os.path.join(config.get('pipelines', 'environment'), 'bin', self._pipeline_command)}"
         
-        data_command = f"data --settings {ini}"        
+        data_command = f"data --config {ini}"        
         data_description = htcondor.Submit(
             executable=executable,
             arguments=data_command,
@@ -79,7 +80,7 @@ class Cogwheel(Pipeline):
             submit_description=data_description
         )
 
-        analysis_command = f"inference --settings {ini}"
+        analysis_command = f"inference --config {ini}"
         analysis_description = htcondor.Submit(
             executable=executable,
             arguments=analysis_command,
@@ -98,7 +99,7 @@ class Cogwheel(Pipeline):
             submit_description=analysis_description,
         )
 
-        dag_file = dags.write_dag(dag, rundir)
+        dag_file = dags.write_dag(dag, rundir, dag_file_name="cogwheel.dag")
 
         logger.info(f"DAG file written to {dag_file}")
 
@@ -107,7 +108,7 @@ class Cogwheel(Pipeline):
         """
         Submit the constructed DAG file.
         """
-        dag_file = "cogwheelpipe.dag"
+        dag_file = "cogwheel.dag"
         with set_directory(self.production.rundir):
             dag_submit = htcondor.Submit.from_dag(
                 str(dag_file), {'force': 1}

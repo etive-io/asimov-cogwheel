@@ -35,11 +35,11 @@ First, the defaults blueprint should look something like this:
 	   nlive: 1000
 
 
-Save this file as ``cogwheel.yaml``, and you can then configure your project to default to using these values for a cogwheel analysis by running
+Save this file as ``cogwheel-pipeline.yaml``, and you can then configure your project to default to using these values for a cogwheel analysis by running
 
 ::
    
-   $ asimov apply -f cogwheel.yaml
+   $ asimov apply -f cogwheel-pipeline.yaml
 
 
 To add a new cogwheel analysis to an event in your project you'll need an analysis blueprint file.
@@ -48,6 +48,7 @@ This should look something like this:
 ::
 
    kind: analysis
+   name: cogwheel-IMRPhenomXPHM
    pipeline: cogwheel
    waveform:
      approximant: IMRPhenomXPHM

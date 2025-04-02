@@ -50,4 +50,4 @@ packages = [
 ]
 
 [project.entry-points.'asimov.pipelines']
-#peconfigurator = 'peconfigurator.asimov:AsimovPipeline'
+cogwheel = 'asimov_cogwheel.asimov:Cogwheel'
