@@ -12,6 +12,7 @@ These pages contain the documentation for asimov-cogwheel, which is an interface
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
-	     cogwheelpipe
-	     configfiles
+	     
+   cogwheelpipe
+   configfiles
 
