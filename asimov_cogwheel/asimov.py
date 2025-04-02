@@ -8,6 +8,7 @@ import glob
 from asimov import logger, config
 from asimov.utils import set_directory
 from asimov.pipeline import Pipeline, PipelineException, PipelineLogger
+from asimov.pipelines import PESummaryPipeline
 
 import htcondor
 from htcondor import dags
@@ -154,7 +155,7 @@ class Cogwheel(Pipeline):
         """
         Check for the production of the posterior file to signal that the job has completed.
         """
-        self.logger.info("Checking if the dingo job has completed")
+        self.logger.info("Checking if the cogwheel job has completed")
 
         results_dir = glob.glob(f"{self.production.rundir}/posterior_samples.h5")
         if len(results_dir) > 0:
@@ -163,3 +164,18 @@ class Cogwheel(Pipeline):
         else:
             self.logger.info("No results files found.")
             return False
+
+    def after_completion(self):
+        post_pipeline = PESummaryPipeline(production=self.production)
+        self.logger.info("Job has completed. Running PE Summary.")
+        cluster = post_pipeline.submit_dag()
+        self.production.meta["job id"] = int(cluster)
+        self.production.status = "processing"
+        self.production.event.update_data()
+
+    def samples(self, absolute=False):
+        results_dir = glob.glob(f"{self.production.rundir}/posterior_samples.h5")
+        if absolute:
+            return [os.path.abspath(results_dir[0])]
+        else:
+            return results_dir
