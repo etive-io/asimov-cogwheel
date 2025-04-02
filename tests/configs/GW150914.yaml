@@ -1,0 +1,22 @@
+event:
+  name: GW150914
+  fiducial parameters:
+    chirp mass: 30
+    
+waveform:
+  approximant: IMRPhenomXPHM
+
+sampler:
+  live points: 1000
+
+likelihood:
+  marginalisation:
+    - distance
+
+prior:
+  class: MarginalizedDistanceIASPrior
+  distributions:
+    chirp mass:
+      minimum: 10
+      maximum: 40
+  

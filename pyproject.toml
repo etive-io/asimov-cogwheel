@@ -38,7 +38,7 @@ docs = [
 ]
 
 [project.scripts]
-#peconfigurator = "peconfigurator.proc_samples:main"
+cogwheelpipe = "asimov_cogwheel.__main__:cogwheelpipe"
 
 [project.urls]
 #"Source code" = "https://"

@@ -3,15 +3,15 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-asimov-cogwheel documentation
-=============================
+Asimov-cogwheel's Documentation
+===============================
 
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
+These pages contain the documentation for asimov-cogwheel, which is an interface between asimov and the cogwheel parameter estimation code.
 
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
+	     cogwheelpipe
+	     configfiles
 
