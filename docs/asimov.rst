@@ -18,6 +18,7 @@ The blueprints for individual analyses can always overwrite the settings from th
 First, the defaults blueprint should look something like this:
 
 ::
+   
    kind: configuration
    pipelines:
      cogwheel:
@@ -37,6 +38,7 @@ First, the defaults blueprint should look something like this:
 Save this file as ``cogwheel.yaml``, and you can then configure your project to default to using these values for a cogwheel analysis by running
 
 ::
+   
    $ asimov apply -f cogwheel.yaml
 
 
