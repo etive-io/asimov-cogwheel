@@ -32,6 +32,10 @@ def data(config):
     
     if not data.EventData.get_filename(eventname).exists():
         filenames, detector_names, tgps = data.download_timeseries(eventname)
+        ctime = config.get('event', {}).get('event time', None)
+        if ctime:
+            # Use the config time rather than the one from cogwheel's data files.
+            tgps = ctime
         event_data = data.EventData.from_timeseries(
             filenames, eventname, detector_names, tgps, t_before=16., fmax=1024.)
         event_data.to_npz()
