@@ -25,7 +25,7 @@ classifiers = [
 requires-python = ">=3.8"
 dependencies = [
 	     "click",
-	     "asimov>=0.5.0",
+	     "asimov>=0.6.1",
 	     "lalsuite>=7.14",
 	     "pesummary",
 	     "nbconvert",

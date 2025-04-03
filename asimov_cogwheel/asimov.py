@@ -5,10 +5,11 @@ import importlib
 import configparser
 import os
 import glob
+import numpy as np
 from asimov import logger, config
 from asimov.utils import set_directory
-from asimov.pipeline import Pipeline, PipelineException, PipelineLogger
-from asimov.pipelines import PESummaryPipeline
+from asimov.pipeline import Pipeline, PipelineException, PipelineLogger, PESummaryPipeline
+#from asimov.pipelines.pesummary import PESummary as PESummaryPipeline
 
 import htcondor
 from htcondor import dags
@@ -104,7 +105,7 @@ class Cogwheel(Pipeline):
         results_command = f"results --config {ini}"
         results_description = htcondor.Submit(
             executable=executable,
-            arguments=analysis_command,
+            arguments=results_command,
             log=os.path.join(rundir, 'cogwheelpipe-results.log'),
             output=os.path.join(rundir, 'cogwheelpipe-results.out'),
             error=os.path.join(rundir, 'cogwheelpipe-results.err'),
@@ -166,6 +167,8 @@ class Cogwheel(Pipeline):
             return False
 
     def after_completion(self):
+        self.production.psds = {"L1": "fake.txt", "H1": "fake.txt"}
+        np.savetxt("fake.txt", np.vstack([np.linspace(1,100, 100), np.ones(100)]).T )
         post_pipeline = PESummaryPipeline(production=self.production)
         self.logger.info("Job has completed. Running PE Summary.")
         cluster = post_pipeline.submit_dag()
