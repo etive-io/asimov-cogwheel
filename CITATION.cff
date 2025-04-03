@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: asimov-cogwheel
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Daniel
+    family-names: Williams
+    email: daniel.williams@glasgow.ac.uk
+    affiliation: University of Glasgow
+    orcid: 'https://orcid.org/0000-0003-3772-198X'
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.15129871
+    description: Zenodo DOI
+repository-code: 'https://github.com/etive-io/asimov-cogwheel'
+abstract: >-
+  Asimov-cogwheel is an interface to the cogwheel
+  gravitational-wave parameter estimation code which allows
+  the asimov analysis automation code to run it.
+keywords:
+  - gravitational waves
+  - parameter estimation
+  - asimov
+  - cogwheel
+license: MIT
