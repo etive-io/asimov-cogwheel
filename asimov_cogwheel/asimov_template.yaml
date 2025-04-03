@@ -21,6 +21,7 @@ label: {{ production.name }}
 
 event:
   name: {{ production.event.name }}
+  event time: {{ production.meta['event time'] }}
   fiducial parameters:
     chirp mass: {{ likelihood['relative binning']['fiducial parameters']['chirp mass'] }}
     
