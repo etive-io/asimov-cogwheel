@@ -8,6 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
 version_scheme = "release-branch-semver"
+local_scheme = "no-local-version"
 
 [project]
 name = "asimov-cogwheel"
