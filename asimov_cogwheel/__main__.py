@@ -91,12 +91,29 @@ def inference(config):
                 
             if os.path.exists(psd_file):
                 logger.info(f"Loading PSD for {ifo} from {psd_file}")
-                # Load PSD file - expected format is two columns: frequency, PSD value
-                psd_data = np.loadtxt(psd_file)
-                freq_psd, psd_values = psd_data[:, 0], psd_data[:, 1]
                 
-                # Compute ASD from PSD
-                asd_values = np.sqrt(psd_values)
+                try:
+                    # Load PSD file - expected format is two columns: frequency, PSD value
+                    psd_data = np.loadtxt(psd_file)
+                    
+                    # Validate PSD file format
+                    if psd_data.ndim != 2 or psd_data.shape[1] < 2:
+                        logger.error(f"Invalid PSD file format for {ifo}: expected 2 columns (frequency, PSD), got shape {psd_data.shape}")
+                        continue
+                    
+                    freq_psd, psd_values = psd_data[:, 0], psd_data[:, 1]
+                    
+                    # Validate PSD values are positive
+                    if np.any(psd_values <= 0):
+                        logger.error(f"Invalid PSD values for {ifo}: PSD must be positive. Found {np.sum(psd_values <= 0)} non-positive values.")
+                        continue
+                    
+                    # Compute ASD from PSD
+                    asd_values = np.sqrt(psd_values)
+                    
+                except (ValueError, IOError, OSError) as e:
+                    logger.error(f"Failed to load PSD file for {ifo} from {psd_file}: {e}")
+                    continue
                 
                 # Interpolate ASD to match event_data frequencies
                 asd_interp = interpolate.interp1d(
@@ -109,8 +126,10 @@ def inference(config):
                 # Create new whitening filter using cogwheel's highpass_filter
                 # This ensures consistency with how cogwheel creates filters
                 from cogwheel.data import highpass_filter
-                fmin = 15.0  # Default minimum frequency
-                df_taper = 1.0  # Default taper width
+                # Use default cogwheel parameters for the whitening filter
+                # These match the defaults in EventData.from_timeseries
+                fmin = 15.0  # Minimum frequency (Hz)
+                df_taper = 1.0  # Taper width (Hz)
                 highpass = highpass_filter(event_data.frequencies, fmin, df_taper)
                 new_wht_filter = highpass / asd_at_event_freqs
                 
@@ -119,6 +138,8 @@ def inference(config):
                 event_data.wht_filter[det_index] = new_wht_filter
                 
                 # Update blued_strain since wht_filter changed
+                # Note: _set_strain is the internal method that properly updates blued_strain
+                # There is no public API for this operation in cogwheel's EventData class
                 event_data._set_strain(event_data.strain)
                 
                 logger.info(f"Successfully updated whitening filter for {ifo} using provided PSD")
