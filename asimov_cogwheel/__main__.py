@@ -69,6 +69,31 @@ def inference(config):
         logger.error("No data for this event could be found. You should run `$ cogwheelpipe data` first!")
     else:
         event_data = data.EventData.from_npz(eventname)
+    
+    # Handle PSD files if specified
+    psd_files = config.get('psds', None)
+    if psd_files:
+        logger.info(f"Using provided PSD files: {psd_files}")
+        # Load PSDs from files and set them on event_data
+        import numpy as np
+        for ifo, psd_file in psd_files.items():
+            if os.path.exists(psd_file):
+                logger.info(f"Loading PSD for {ifo} from {psd_file}")
+                psd_data = np.loadtxt(psd_file)
+                # Assuming PSD file format is [frequency, psd_value]
+                # Set the PSD on the event_data object
+                # Note: The exact method depends on cogwheel's API
+                # This may need adjustment based on cogwheel's actual interface
+                if hasattr(event_data, 'set_psd'):
+                    event_data.set_psd(ifo, psd_data)
+                elif hasattr(event_data, 'psds'):
+                    if not hasattr(event_data, 'psds') or event_data.psds is None:
+                        event_data.psds = {}
+                    event_data.psds[ifo] = psd_data
+            else:
+                logger.warning(f"PSD file not found: {psd_file}")
+    else:
+        logger.info("No PSD files specified, will use default PSD estimation from data")
 
     # Include likelihood settings
     likelihood_kwargs={}
