@@ -61,6 +61,11 @@ def data(config):
         # Get channel names (optional, with defaults)
         channels = config_data.get('frame_files', {}).get('channels', {})
         
+        # Data parameters (matching the GWOSC download behavior)
+        # These match what cogwheel uses for downloaded data
+        duration = 32.0  # Total duration of data to read (16s before + 16s after)
+        t_before = 16.0  # Time before event
+        
         # Lists to store data for all detectors
         timeseries_list = []
         detector_names = []
@@ -82,9 +87,20 @@ def data(config):
             logger.info(f"Reading {ifo} data from {frame_file}, channel {channel}")
             
             try:
-                # Read the timeseries from the frame file
-                # gwpy will read around the event time
-                ts = TimeSeries.read(frame_file, channel, format='gwf')
+                # Read the timeseries from the frame file centered on the event
+                # Read a segment around the event time
+                start_time = ctime - t_before - 2.0  # Extra padding for safety
+                end_time = ctime + t_before + 2.0
+                
+                ts = TimeSeries.read(
+                    frame_file, 
+                    channel, 
+                    start=start_time,
+                    end=end_time,
+                    format='gwf'
+                )
+                
+                logger.info(f"Read {len(ts)} samples at {ts.sample_rate} Hz for {ifo}")
                 
                 # Save to temporary txt file for cogwheel compatibility
                 # This matches the format cogwheel expects from download_timeseries
@@ -101,6 +117,8 @@ def data(config):
                 logger.info(f"Successfully read data for {ifo}")
             except Exception as e:
                 logger.error(f"Failed to read frame file for {ifo}: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
                 continue
         
         if not timeseries_list:
@@ -108,9 +126,10 @@ def data(config):
             return
         
         # Create EventData from the timeseries files
+        # Use the same parameters as GWOSC download for consistency
         event_data = data.EventData.from_timeseries(
             timeseries_list, eventname, detector_names, ctime, 
-            t_before=16., fmax=1024.)
+            t_before=t_before, fmax=1024.)
         event_data.to_npz()
         
         # Clean up temporary files
