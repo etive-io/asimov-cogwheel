@@ -80,11 +80,28 @@ def inference(config):
         logger.info(f"Using provided PSD files: {psd_files}")
         import numpy as np
         from scipy import interpolate
+        from cogwheel.data import highpass_filter
+        
+        # Get whitening filter parameters from config (applies to all detectors)
+        psd_config = config.get('psds', {})
+        if isinstance(psd_config, dict) and 'whitening_filter' in psd_config:
+            wht_params = psd_config['whitening_filter']
+            fmin = wht_params.get('fmin', 15.0)
+            df_taper = wht_params.get('df_taper', 1.0)
+            logger.info(f"Using whitening filter parameters: fmin={fmin} Hz, df_taper={df_taper} Hz")
+        else:
+            # Use default cogwheel parameters
+            fmin = 15.0  # Minimum frequency (Hz)
+            df_taper = 1.0  # Taper width (Hz)
         
         # Get the detector index mapping
         detector_indices = {det: i for i, det in enumerate(event_data.detector_names)}
         
         for ifo, psd_file in psd_files.items():
+            # Skip non-string entries (e.g., whitening_filter dict)
+            if not isinstance(psd_file, str):
+                continue
+                
             if ifo not in detector_indices:
                 logger.warning(f"Detector {ifo} not found in event data, skipping PSD file")
                 continue
@@ -119,8 +136,8 @@ def inference(config):
                 asd_interp = interpolate.interp1d(
                     freq_psd, asd_values, 
                     bounds_error=False, 
-                    # Use np.inf for frequencies outside PSD range to effectively zero the 
-                    # whitening filter there (since wht_filter = highpass / asd).
+                    # Use np.inf for frequencies outside PSD range. This effectively 
+                    # disables whitening at those frequencies (wht_filter = highpass / asd = 0).
                     # The highpass filter will be 0 below fmin anyway.
                     fill_value=np.inf
                 )
@@ -128,17 +145,6 @@ def inference(config):
                 
                 # Create new whitening filter using cogwheel's highpass_filter
                 # This ensures consistency with how cogwheel creates filters
-                from cogwheel.data import highpass_filter
-                # Get whitening filter parameters from config, with defaults matching cogwheel
-                psd_config = config.get('psds', {})
-                if isinstance(psd_config, dict) and 'whitening_filter' in psd_config:
-                    wht_params = psd_config['whitening_filter']
-                    fmin = wht_params.get('fmin', 15.0)
-                    df_taper = wht_params.get('df_taper', 1.0)
-                else:
-                    # Use default cogwheel parameters
-                    fmin = 15.0  # Minimum frequency (Hz)
-                    df_taper = 1.0  # Taper width (Hz)
                 highpass = highpass_filter(event_data.frequencies, fmin, df_taper)
                 new_wht_filter = highpass / asd_at_event_freqs
                 
