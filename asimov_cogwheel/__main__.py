@@ -1,5 +1,6 @@
 import logging
 import os
+import traceback
 import click
 from . import __version__
 from . import config as pipeconfig
@@ -59,11 +60,11 @@ def data(config):
             return
         
         # Get channel names (optional, with defaults)
-        channels = config_data.get('frame_files', {}).get('channels', {})
+        # channels is nested under frame_files in the config
+        channels = frame_files.get('channels', {})
         
         # Data parameters (matching the GWOSC download behavior)
         # These match what cogwheel uses for downloaded data
-        duration = 32.0  # Total duration of data to read (16s before + 16s after)
         t_before = 16.0  # Time before event
         
         # Lists to store data for all detectors
@@ -117,7 +118,6 @@ def data(config):
                 logger.info(f"Successfully read data for {ifo}")
             except Exception as e:
                 logger.error(f"Failed to read frame file for {ifo}: {e}")
-                import traceback
                 logger.debug(traceback.format_exc())
                 continue
         
