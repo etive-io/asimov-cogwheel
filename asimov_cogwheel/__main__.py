@@ -20,6 +20,10 @@ def data(config):
     """
     Use cogwheel's own data acquisition routines to download strain data
     from GWOSC.
+    
+    Note: PSDs are computed from the downloaded data using the Welch method.
+    If you want to use externally provided PSDs (e.g., from BayesWave), 
+    specify them in the configuration file under the 'psds' section.
     """
     from cogwheel import data
     config = pipeconfig.parse_config(config)
@@ -67,8 +71,126 @@ def inference(config):
     logger.info("Loading strain data")
     if not data.EventData.get_filename(eventname).exists():
         logger.error("No data for this event could be found. You should run `$ cogwheelpipe data` first!")
+        return
     else:
         event_data = data.EventData.from_npz(eventname)
+    
+    # Handle PSD files if specified
+    psd_files = config.get('psds', None)
+    if psd_files:
+        logger.info(f"Using provided PSD files: {psd_files}")
+        import numpy as np
+        from scipy import interpolate
+        from cogwheel.data import highpass_filter
+        
+        # Get whitening filter parameters from config (applies to all detectors)
+        psd_config = config.get('psds', {})
+        if isinstance(psd_config, dict) and 'whitening_filter' in psd_config:
+            wht_params = psd_config['whitening_filter']
+            fmin = wht_params.get('fmin', 15.0)
+            df_taper = wht_params.get('df_taper', 1.0)
+            logger.info(f"Using whitening filter parameters: fmin={fmin} Hz, df_taper={df_taper} Hz")
+        else:
+            # Use default cogwheel parameters
+            fmin = 15.0  # Minimum frequency (Hz)
+            df_taper = 1.0  # Taper width (Hz)
+        
+        # Get the detector index mapping
+        detector_indices = {det: i for i, det in enumerate(event_data.detector_names)}
+        
+        for ifo, psd_file in psd_files.items():
+            # Skip non-string entries (e.g., whitening_filter dict)
+            if not isinstance(psd_file, str):
+                continue
+                
+            if ifo not in detector_indices:
+                logger.warning(f"Detector {ifo} not found in event data, skipping PSD file")
+                continue
+                
+            if os.path.exists(psd_file):
+                logger.info(f"Loading PSD for {ifo} from {psd_file}")
+                
+                try:
+                    # Load PSD file - expected format is two columns: frequency, PSD value
+                    psd_data = np.loadtxt(psd_file)
+                    
+                    # Validate PSD file format
+                    # np.loadtxt returns a 1D array for single-column input; explicitly reject that case.
+                    if psd_data.ndim == 1:
+                        logger.error(
+                            f"Invalid PSD file format for {ifo}: expected 2 columns (frequency, PSD), "
+                            f"but got a single-column array of shape {psd_data.shape}."
+                        )
+                        continue
+                    
+                    if psd_data.ndim != 2 or psd_data.shape[1] < 2:
+                        logger.error(
+                            f"Invalid PSD file format for {ifo}: expected 2 columns (frequency, PSD), "
+                            f"got array of shape {psd_data.shape}."
+                        )
+                        continue
+                    
+                    freq_psd, psd_values = psd_data[:, 0], psd_data[:, 1]
+                    
+                    # Validate that frequencies are strictly monotonically increasing (no duplicates)
+                    freq_diffs = np.diff(freq_psd)
+                    if np.any(freq_diffs <= 0):
+                        logger.error(
+                            f"Invalid PSD frequencies for {ifo}: frequencies must be strictly increasing "
+                            f"with no duplicates. Found {np.sum(freq_diffs <= 0)} non-increasing steps."
+                        )
+                        continue
+                    
+                    # Validate PSD values are positive
+                    if np.any(psd_values <= 0):
+                        logger.error(f"Invalid PSD values for {ifo}: PSD must be positive. Found {np.sum(psd_values <= 0)} non-positive values.")
+                        continue
+                    
+                    # Compute ASD from PSD
+                    asd_values = np.sqrt(psd_values)
+                    
+                except (ValueError, IOError, OSError) as e:
+                    logger.error(f"Failed to load PSD file for {ifo} from {psd_file}: {e}")
+                    continue
+                
+                # Interpolate ASD to match event_data frequencies
+                asd_interp = interpolate.interp1d(
+                    freq_psd, asd_values,
+                    bounds_error=False,
+                    # For frequencies outside the PSD range, return NaN and explicitly
+                    # mask them when constructing the whitening filter. This avoids
+                    # using infinities in subsequent divisions while still effectively
+                    # disabling whitening at those frequencies (filter set to 0).
+                    fill_value=np.nan
+                )
+                asd_at_event_freqs = asd_interp(event_data.frequencies)
+
+                # Create new whitening filter using cogwheel's highpass_filter
+                # This ensures consistency with how cogwheel creates filters
+                highpass = highpass_filter(event_data.frequencies, fmin, df_taper)
+
+                # Initialize whitening filter to zero everywhere; we will only compute
+                # non-zero values where the ASD is finite and positive.
+                new_wht_filter = np.zeros_like(event_data.frequencies, dtype=float)
+                valid_asd = np.isfinite(asd_at_event_freqs) & (asd_at_event_freqs > 0)
+                new_wht_filter[valid_asd] = (
+                    highpass[valid_asd] / asd_at_event_freqs[valid_asd]
+                )
+                
+                # Update the whitening filter for this detector
+                det_index = detector_indices[ifo]
+                event_data.wht_filter[det_index] = new_wht_filter
+                
+                # Update blued_strain since wht_filter changed
+                # Note: _set_strain is the internal method that properly updates blued_strain
+                # There is no public API for this operation in cogwheel's EventData class
+                event_data._set_strain(event_data.strain)
+                
+                logger.info(f"Successfully updated whitening filter for {ifo} using provided PSD")
+            else:
+                logger.warning(f"PSD file not found: {psd_file}")
+    else:
+        logger.info("No PSD files specified, will use default PSD estimation from data")
 
     # Include likelihood settings
     likelihood_kwargs={}

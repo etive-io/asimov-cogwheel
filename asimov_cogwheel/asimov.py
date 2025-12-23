@@ -167,8 +167,16 @@ class Cogwheel(Pipeline):
             return False
 
     def after_completion(self):
-        self.production.psds = {"L1": "fake.txt", "H1": "fake.txt"}
-        np.savetxt("fake.txt", np.vstack([np.linspace(1,100, 100), np.ones(100)]).T )
+        # Check if PSDs were already provided in the production metadata
+        if not hasattr(self.production, 'psds') or not self.production.psds:
+            # Fallback to fake PSDs for backward compatibility
+            # In the future, these should be extracted from the analysis results
+            self.logger.warning("No PSDs found in production metadata, using placeholder PSDs")
+            self.production.psds = {"L1": "fake.txt", "H1": "fake.txt"}
+            np.savetxt("fake.txt", np.vstack([np.linspace(1,100, 100), np.ones(100)]).T )
+        else:
+            self.logger.info(f"Using PSDs from production: {self.production.psds}")
+        
         post_pipeline = PESummaryPipeline(production=self.production)
         self.logger.info("Job has completed. Running PE Summary.")
         cluster = post_pipeline.submit_dag()

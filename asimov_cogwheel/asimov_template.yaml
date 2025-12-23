@@ -45,4 +45,18 @@ prior:
   #   chirp mass:
   #     minimum: 10
   #     maximum: 40
+
+{% if production.psds %}
+psds:
+{% for ifo, psd_file in production.psds.items() %}
+{% if ifo != 'whitening_filter' %}
+  {{ ifo }}: {{ psd_file }}
+{% endif %}
+{% endfor %}
+{% if production.meta.get('psds', {}).get('whitening_filter') %}
+  whitening_filter:
+    fmin: {{ production.meta['psds']['whitening_filter'].get('fmin', 15.0) }}
+    df_taper: {{ production.meta['psds']['whitening_filter'].get('df_taper', 1.0) }}
+{% endif %}
+{% endif %}
   
