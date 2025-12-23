@@ -51,5 +51,10 @@ psds:
 {% for ifo, psd_file in production.psds.items() %}
   {{ ifo }}: {{ psd_file }}
 {% endfor %}
+{% if production.meta.get('psd_settings') %}
+  whitening_filter:
+    fmin: {{ production.meta['psd_settings'].get('fmin', 15.0) }}
+    df_taper: {{ production.meta['psd_settings'].get('df_taper', 1.0) }}
+{% endif %}
 {% endif %}
   

@@ -26,4 +26,8 @@ prior:
 psds:
   H1: /path/to/H1_psd.txt
   L1: /path/to/L1_psd.txt
+  # Optional: Configure whitening filter parameters
+  whitening_filter:
+    fmin: 15.0       # Minimum frequency (Hz), default: 15.0
+    df_taper: 1.0    # Taper width (Hz), default: 1.0
   

@@ -29,6 +29,10 @@ psds:
   H1: /path/to/H1_psd.txt
   L1: /path/to/L1_psd.txt
   V1: /path/to/V1_psd.txt
+  # Optional: Configure whitening filter parameters
+  whitening_filter:
+    fmin: 15.0       # Minimum frequency (Hz), default: 15.0
+    df_taper: 1.0    # Taper width (Hz), default: 1.0
 ```
 
 When PSDs are specified in the configuration:
@@ -36,5 +40,6 @@ When PSDs are specified in the configuration:
 - Amplitude Spectral Densities (ASDs) are computed as the square root of the PSDs
 - The ASDs are interpolated to match the event data frequencies
 - New whitening filters are created and applied to the data
+- The `fmin` and `df_taper` parameters control the highpass filter used in the whitening process
 - If no PSDs are specified, the default behavior is to estimate them from the data using the Welch method
 

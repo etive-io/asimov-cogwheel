@@ -129,10 +129,16 @@ def inference(config):
                 # Create new whitening filter using cogwheel's highpass_filter
                 # This ensures consistency with how cogwheel creates filters
                 from cogwheel.data import highpass_filter
-                # Use default cogwheel parameters for the whitening filter
-                # These match the defaults in EventData.from_timeseries
-                fmin = 15.0  # Minimum frequency (Hz)
-                df_taper = 1.0  # Taper width (Hz)
+                # Get whitening filter parameters from config, with defaults matching cogwheel
+                psd_config = config.get('psds', {})
+                if isinstance(psd_config, dict) and 'whitening_filter' in psd_config:
+                    wht_params = psd_config['whitening_filter']
+                    fmin = wht_params.get('fmin', 15.0)
+                    df_taper = wht_params.get('df_taper', 1.0)
+                else:
+                    # Use default cogwheel parameters
+                    fmin = 15.0  # Minimum frequency (Hz)
+                    df_taper = 1.0  # Taper width (Hz)
                 highpass = highpass_filter(event_data.frequencies, fmin, df_taper)
                 new_wht_filter = highpass / asd_at_event_freqs
                 
