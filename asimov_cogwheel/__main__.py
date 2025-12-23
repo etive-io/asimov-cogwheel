@@ -31,6 +31,7 @@ def data(config):
     """
     from cogwheel import data
     import numpy as np
+    import tempfile
     from gwpy.timeseries import TimeSeries
     
     config_data = pipeconfig.parse_config(config)
@@ -89,8 +90,8 @@ def data(config):
         
         # Determine fmax: if it's a dict (per-detector), use the highest value
         # Otherwise use the value directly, or default to 1024 Hz
-        if isinstance(max_freq_config, dict):
-            fmax = max(max_freq_config.values()) if max_freq_config else 1024.0
+        if isinstance(max_freq_config, dict) and max_freq_config:
+            fmax = max(max_freq_config.values())
             logger.info(f"Using maximum frequency from config: {fmax} Hz (highest among detectors)")
         elif max_freq_config:
             fmax = float(max_freq_config)
@@ -126,9 +127,11 @@ def data(config):
                 try:
                     # Read the timeseries from the frame file centered on the event.
                     # The segment extends from (ctime - t_before) to (ctime + post_trigger_time),
-                    # with additional padding on each side for edge effects in filtering/whitening.
+                    # with additional post_trigger_time padding on each side for edge effects 
+                    # in filtering/whitening operations.
+                    # Total segment: [ctime - t_before - post_trigger_time, ctime + 2*post_trigger_time]
                     start_time = ctime - t_before - post_trigger_time
-                    end_time = ctime + post_trigger_time + post_trigger_time
+                    end_time = ctime + 2 * post_trigger_time
                     
                     timeseries = TimeSeries.read(
                         frame_file, 
@@ -143,7 +146,6 @@ def data(config):
                     # Save to temporary txt file for cogwheel compatibility
                     # This matches the format cogwheel expects from download_timeseries
                     # Use a more unique temporary filename with PID
-                    import tempfile
                     temp_fd, temp_filename = tempfile.mkstemp(suffix=f"-{ifo}-timeseries.txt", text=True)
                     os.close(temp_fd)  # Close the file descriptor, we'll write with savetxt
                     
