@@ -71,6 +71,7 @@ def inference(config):
     logger.info("Loading strain data")
     if not data.EventData.get_filename(eventname).exists():
         logger.error("No data for this event could be found. You should run `$ cogwheelpipe data` first!")
+        return
     else:
         event_data = data.EventData.from_npz(eventname)
     
@@ -114,11 +115,31 @@ def inference(config):
                     psd_data = np.loadtxt(psd_file)
                     
                     # Validate PSD file format
+                    # np.loadtxt returns a 1D array for single-column input; explicitly reject that case.
+                    if psd_data.ndim == 1:
+                        logger.error(
+                            f"Invalid PSD file format for {ifo}: expected 2 columns (frequency, PSD), "
+                            f"but got a single-column array of shape {psd_data.shape}."
+                        )
+                        continue
+                    
                     if psd_data.ndim != 2 or psd_data.shape[1] < 2:
-                        logger.error(f"Invalid PSD file format for {ifo}: expected 2 columns (frequency, PSD), got shape {psd_data.shape}")
+                        logger.error(
+                            f"Invalid PSD file format for {ifo}: expected 2 columns (frequency, PSD), "
+                            f"got array of shape {psd_data.shape}."
+                        )
                         continue
                     
                     freq_psd, psd_values = psd_data[:, 0], psd_data[:, 1]
+                    
+                    # Validate that frequencies are strictly monotonically increasing (no duplicates)
+                    freq_diffs = np.diff(freq_psd)
+                    if np.any(freq_diffs <= 0):
+                        logger.error(
+                            f"Invalid PSD frequencies for {ifo}: frequencies must be strictly increasing "
+                            f"with no duplicates. Found {np.sum(freq_diffs <= 0)} non-increasing steps."
+                        )
+                        continue
                     
                     # Validate PSD values are positive
                     if np.any(psd_values <= 0):
@@ -134,19 +155,27 @@ def inference(config):
                 
                 # Interpolate ASD to match event_data frequencies
                 asd_interp = interpolate.interp1d(
-                    freq_psd, asd_values, 
-                    bounds_error=False, 
-                    # Use np.inf for frequencies outside PSD range. Large ASD values 
-                    # effectively disable whitening at those frequencies since 
-                    # wht_filter = highpass / asd approaches 0 as asd → ∞.
-                    fill_value=np.inf
+                    freq_psd, asd_values,
+                    bounds_error=False,
+                    # For frequencies outside the PSD range, return NaN and explicitly
+                    # mask them when constructing the whitening filter. This avoids
+                    # using infinities in subsequent divisions while still effectively
+                    # disabling whitening at those frequencies (filter set to 0).
+                    fill_value=np.nan
                 )
                 asd_at_event_freqs = asd_interp(event_data.frequencies)
-                
+
                 # Create new whitening filter using cogwheel's highpass_filter
                 # This ensures consistency with how cogwheel creates filters
                 highpass = highpass_filter(event_data.frequencies, fmin, df_taper)
-                new_wht_filter = highpass / asd_at_event_freqs
+
+                # Initialize whitening filter to zero everywhere; we will only compute
+                # non-zero values where the ASD is finite and positive.
+                new_wht_filter = np.zeros_like(event_data.frequencies, dtype=float)
+                valid_asd = np.isfinite(asd_at_event_freqs) & (asd_at_event_freqs > 0)
+                new_wht_filter[valid_asd] = (
+                    highpass[valid_asd] / asd_at_event_freqs[valid_asd]
+                )
                 
                 # Update the whitening filter for this detector
                 det_index = detector_indices[ifo]

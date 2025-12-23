@@ -49,12 +49,14 @@ prior:
 {% if production.psds %}
 psds:
 {% for ifo, psd_file in production.psds.items() %}
+{% if ifo != 'whitening_filter' %}
   {{ ifo }}: {{ psd_file }}
+{% endif %}
 {% endfor %}
-{% if production.meta.get('psd_settings') %}
+{% if production.meta.get('psds', {}).get('whitening_filter') %}
   whitening_filter:
-    fmin: {{ production.meta['psd_settings'].get('fmin', 15.0) }}
-    df_taper: {{ production.meta['psd_settings'].get('df_taper', 1.0) }}
+    fmin: {{ production.meta['psds']['whitening_filter'].get('fmin', 15.0) }}
+    df_taper: {{ production.meta['psds']['whitening_filter'].get('df_taper', 1.0) }}
 {% endif %}
 {% endif %}
   
