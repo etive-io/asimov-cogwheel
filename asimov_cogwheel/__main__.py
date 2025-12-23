@@ -20,6 +20,10 @@ def data(config):
     """
     Use cogwheel's own data acquisition routines to download strain data
     from GWOSC.
+    
+    Note: PSDs are computed from the downloaded data using the Welch method.
+    If you want to use externally provided PSDs (e.g., from BayesWave), 
+    specify them in the configuration file under the 'psds' section.
     """
     from cogwheel import data
     config = pipeconfig.parse_config(config)
@@ -74,22 +78,50 @@ def inference(config):
     psd_files = config.get('psds', None)
     if psd_files:
         logger.info(f"Using provided PSD files: {psd_files}")
-        # Load PSDs from files and set them on event_data
         import numpy as np
+        from scipy import interpolate
+        
+        # Get the detector index mapping
+        detector_indices = {det: i for i, det in enumerate(event_data.detector_names)}
+        
         for ifo, psd_file in psd_files.items():
+            if ifo not in detector_indices:
+                logger.warning(f"Detector {ifo} not found in event data, skipping PSD file")
+                continue
+                
             if os.path.exists(psd_file):
                 logger.info(f"Loading PSD for {ifo} from {psd_file}")
+                # Load PSD file - expected format is two columns: frequency, PSD value
                 psd_data = np.loadtxt(psd_file)
-                # Assuming PSD file format is [frequency, psd_value]
-                # Set the PSD on the event_data object
-                # Note: The exact method depends on cogwheel's API
-                # This may need adjustment based on cogwheel's actual interface
-                if hasattr(event_data, 'set_psd'):
-                    event_data.set_psd(ifo, psd_data)
-                elif hasattr(event_data, 'psds'):
-                    if not hasattr(event_data, 'psds') or event_data.psds is None:
-                        event_data.psds = {}
-                    event_data.psds[ifo] = psd_data
+                freq_psd, psd_values = psd_data[:, 0], psd_data[:, 1]
+                
+                # Compute ASD from PSD
+                asd_values = np.sqrt(psd_values)
+                
+                # Interpolate ASD to match event_data frequencies
+                asd_interp = interpolate.interp1d(
+                    freq_psd, asd_values, 
+                    bounds_error=False, 
+                    fill_value=np.inf  # Large value outside bounds
+                )
+                asd_at_event_freqs = asd_interp(event_data.frequencies)
+                
+                # Create new whitening filter using cogwheel's highpass_filter
+                # This ensures consistency with how cogwheel creates filters
+                from cogwheel.data import highpass_filter
+                fmin = 15.0  # Default minimum frequency
+                df_taper = 1.0  # Default taper width
+                highpass = highpass_filter(event_data.frequencies, fmin, df_taper)
+                new_wht_filter = highpass / asd_at_event_freqs
+                
+                # Update the whitening filter for this detector
+                det_index = detector_indices[ifo]
+                event_data.wht_filter[det_index] = new_wht_filter
+                
+                # Update blued_strain since wht_filter changed
+                event_data._set_strain(event_data.strain)
+                
+                logger.info(f"Successfully updated whitening filter for {ifo} using provided PSD")
             else:
                 logger.warning(f"PSD file not found: {psd_file}")
     else:
