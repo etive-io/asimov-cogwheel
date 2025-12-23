@@ -73,7 +73,7 @@ def data(config):
         
         # Data parameters (matching the GWOSC download behavior)
         # These match what cogwheel uses for downloaded data
-        t_before = 16.0  # Time before event
+        t_before = 16.0  # Time before event time (in seconds) to include in the data segment
         
         # Lists to store data for all detectors
         timeseries_list = []
@@ -81,8 +81,10 @@ def data(config):
         
         # Process each detector
         for ifo, frame_file in frame_files.items():
-            # Skip non-string entries (e.g., channels dict)
+            # Skip non-string entries (these should not exist in the new structure
+            # where channels are separate, but this provides safety for edge cases)
             if not isinstance(frame_file, str):
+                logger.warning(f"Skipping non-string entry in frame files: {ifo}")
                 continue
             
             if not os.path.exists(frame_file):
