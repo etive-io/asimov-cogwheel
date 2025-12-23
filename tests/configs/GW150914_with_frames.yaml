@@ -21,11 +21,12 @@ prior:
       minimum: 10
       maximum: 40
 
-# Frame files for each interferometer
-# These files contain the strain data in GWF (Gravitational Wave Frame) format
-frame_files:
-  H1: /path/to/H-H1_GWOSC_16KHZ_R1-1126257415-4096.gwf
-  L1: /path/to/L-L1_GWOSC_16KHZ_R1-1126257415-4096.gwf
+# Data configuration including frame files and channels
+# Frame files contain the strain data in GWF (Gravitational Wave Frame) format
+data:
+  frame files:
+    H1: /path/to/H-H1_GWOSC_16KHZ_R1-1126257415-4096.gwf
+    L1: /path/to/L-L1_GWOSC_16KHZ_R1-1126257415-4096.gwf
   # Optional: Specify custom channel names for each detector
   # If not specified, defaults to {IFO}:GWOSC-16KHZ_R1_STRAIN
   channels:

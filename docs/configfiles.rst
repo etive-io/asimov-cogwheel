@@ -56,7 +56,11 @@ Data Settings
 
 These settings control how strain data is acquired for the analysis.
 
-``frame_files``
+``data``
+  The data section contains configuration for frame files and channel names.
+  This follows asimov's blueprint structure for data configuration.
+
+``data: frame files``
   Specify GWF (Gravitational Wave Frame) files containing strain data for each 
   interferometer. This is useful when you want to use data from local files or 
   from previous analyses (e.g., from asimov-gwdata pipeline) instead of 
@@ -66,23 +70,25 @@ These settings control how strain data is acquired for the analysis.
 
   ::
 
-     frame_files:
-       H1: /path/to/H-H1_GWOSC_16KHZ_R1-1126257415-4096.gwf
-       L1: /path/to/L-L1_GWOSC_16KHZ_R1-1126257415-4096.gwf
-       V1: /path/to/V-V1_GWOSC_16KHZ_R1-1126257415-4096.gwf
+     data:
+       frame files:
+         H1: /path/to/H-H1_GWOSC_16KHZ_R1-1126257415-4096.gwf
+         L1: /path/to/L-L1_GWOSC_16KHZ_R1-1126257415-4096.gwf
+         V1: /path/to/V-V1_GWOSC_16KHZ_R1-1126257415-4096.gwf
 
   If frame files are not specified, data will be downloaded from GWOSC.
 
-``frame_files: channels``
+``data: channels``
   Optionally specify custom channel names for each detector when reading frame files.
   If not specified, the default channel naming convention ``{IFO}:GWOSC-16KHZ_R1_STRAIN`` 
   is used.
 
   ::
 
-     frame_files:
-       H1: /path/to/H1_frame.gwf
-       L1: /path/to/L1_frame.gwf
+     data:
+       frame files:
+         H1: /path/to/H1_frame.gwf
+         L1: /path/to/L1_frame.gwf
        channels:
          H1: H1:GWOSC-16KHZ_R1_STRAIN
          L1: L1:GWOSC-16KHZ_R1_STRAIN

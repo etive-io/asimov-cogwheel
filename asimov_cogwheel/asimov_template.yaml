@@ -46,14 +46,22 @@ prior:
   #     minimum: 10
   #     maximum: 40
 
-{% if production.frame_files %}
-frame_files:
-{% for ifo, frame_file in production.frame_files.items() %}
-  {{ ifo }}: {{ frame_file }}
+{% if production.meta.get('data', {}).get('frame files') or production.frame_files %}
+data:
+{% if production.meta.get('data', {}).get('frame files') %}
+  frame files:
+{% for ifo, frame_file in production.meta['data']['frame files'].items() %}
+    {{ ifo }}: {{ frame_file }}
 {% endfor %}
-{% if production.meta.get('frame_files', {}).get('channels') %}
+{% elif production.frame_files %}
+  frame files:
+{% for ifo, frame_file in production.frame_files.items() %}
+    {{ ifo }}: {{ frame_file }}
+{% endfor %}
+{% endif %}
+{% if production.meta.get('data', {}).get('channels') %}
   channels:
-{% for ifo, channel in production.meta['frame_files']['channels'].items() %}
+{% for ifo, channel in production.meta['data']['channels'].items() %}
     {{ ifo }}: {{ channel }}
 {% endfor %}
 {% endif %}

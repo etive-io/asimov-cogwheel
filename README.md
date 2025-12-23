@@ -17,16 +17,17 @@ You can specify GWF (Gravitational Wave Frame) files as input data sources in yo
 
 Frame files should be in the standard GWF format used by LIGO/Virgo/KAGRA.
 
-To use frame files, add a `frame_files` section to your configuration file:
+To use frame files, add a `data` section to your configuration file:
 ```yaml
 event:
   name: GW150914
   event time: 1126259462.4  # GPS time is required when using frame files
 
-frame_files:
-  H1: /path/to/H-H1_GWOSC_16KHZ_R1-1126257415-4096.gwf
-  L1: /path/to/L-L1_GWOSC_16KHZ_R1-1126257415-4096.gwf
-  V1: /path/to/V-V1_GWOSC_16KHZ_R1-1126257415-4096.gwf
+data:
+  frame files:
+    H1: /path/to/H-H1_GWOSC_16KHZ_R1-1126257415-4096.gwf
+    L1: /path/to/L-L1_GWOSC_16KHZ_R1-1126257415-4096.gwf
+    V1: /path/to/V-V1_GWOSC_16KHZ_R1-1126257415-4096.gwf
   # Optional: Specify custom channel names for each detector
   # If not specified, defaults to {IFO}:GWOSC-16KHZ_R1_STRAIN
   channels:
@@ -46,7 +47,7 @@ This approach makes the data handling compatible with [bilby](https://github.com
 
 ### Using with Asimov
 
-When using asimov to orchestrate analyses, you can pass frame files from previous pipeline stages (such as asimov-gwdata) by setting the `frame_files` attribute on the production object. The asimov template will automatically include these in the configuration file.
+When using asimov to orchestrate analyses, you can pass frame files from previous pipeline stages (such as asimov-gwdata) by setting the `data` metadata on the production object. The asimov template will automatically include these in the configuration file following asimov's blueprint structure.
 
 ## Using Custom PSDs
 

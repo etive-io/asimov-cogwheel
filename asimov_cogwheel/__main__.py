@@ -46,7 +46,12 @@ def data(config):
         return
     
     # Check if frame files are specified
-    frame_files = config_data.get('frame_files', None)
+    # Support both new structure (data.frame files) and legacy (frame_files)
+    data_config = config_data.get('data', {})
+    frame_files = data_config.get('frame files', None)
+    if not frame_files:
+        # Fallback to legacy structure for backward compatibility
+        frame_files = config_data.get('frame_files', None)
     
     if frame_files:
         # Use frame files
@@ -60,8 +65,11 @@ def data(config):
             return
         
         # Get channel names (optional, with defaults)
-        # channels is nested under frame_files in the config
-        channels = frame_files.get('channels', {})
+        # channels is in the data section in the new structure
+        channels = data_config.get('channels', {})
+        if not channels:
+            # Fallback to legacy structure
+            channels = config_data.get('frame_files', {}).get('channels', {})
         
         # Data parameters (matching the GWOSC download behavior)
         # These match what cogwheel uses for downloaded data
