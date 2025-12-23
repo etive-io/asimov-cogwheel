@@ -119,7 +119,10 @@ def inference(config):
                 asd_interp = interpolate.interp1d(
                     freq_psd, asd_values, 
                     bounds_error=False, 
-                    fill_value=np.inf  # Large value outside bounds
+                    # Use np.inf for frequencies outside PSD range to effectively zero the 
+                    # whitening filter there (since wht_filter = highpass / asd).
+                    # The highpass filter will be 0 below fmin anyway.
+                    fill_value=np.inf
                 )
                 asd_at_event_freqs = asd_interp(event_data.frequencies)
                 
