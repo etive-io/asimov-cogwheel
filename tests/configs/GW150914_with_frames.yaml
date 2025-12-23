@@ -13,6 +13,9 @@ sampler:
 likelihood:
   marginalisation:
     - distance
+  # Optional: Post trigger time in seconds (default: 2.0)
+  # Time after the event to include in the analysis
+  post trigger time: 2.0
 
 prior:
   class: MarginalizedDistanceIASPrior
@@ -32,6 +35,18 @@ data:
   channels:
     H1: H1:GWOSC-16KHZ_R1_STRAIN
     L1: L1:GWOSC-16KHZ_R1_STRAIN
+  # Optional: Segment length in seconds (default: 32.0)
+  segment length: 32.0
+
+# Optional: Quality settings including maximum frequency
+quality:
+  # Maximum frequency can be specified per-detector or as a single value
+  # If per-detector, the highest value will be used for all detectors
+  maximum frequency:
+    H1: 1024.0
+    L1: 1024.0
+  # Or as a single value:
+  # maximum frequency: 1024.0
 
 # Optional: Specify PSD files for each interferometer
 # These can be used in combination with frame files

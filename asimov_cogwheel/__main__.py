@@ -31,6 +31,7 @@ def data(config):
     """
     from cogwheel import data
     import numpy as np
+    from gwpy.timeseries import TimeSeries
     
     config_data = pipeconfig.parse_config(config)
     eventname = config_data.get('event', {}).get('name', None)
@@ -56,7 +57,6 @@ def data(config):
     if frame_files:
         # Use frame files
         logger.info("Reading data from frame files")
-        from gwpy.timeseries import TimeSeries
         
         # Get event time
         ctime = config_data.get('event', {}).get('event time', None)
@@ -71,83 +71,116 @@ def data(config):
             # Fallback to legacy structure
             channels = config_data.get('frame_files', {}).get('channels', {})
         
-        # Data parameters (matching the GWOSC download behavior)
-        # These match what cogwheel uses for downloaded data
-        t_before = 16.0  # Time before event time (in seconds) to include in the data segment
+        # Get configurable data parameters from the config
+        # Post trigger time (time after the event), default 2 seconds
+        likelihood_config = config_data.get('likelihood', {})
+        post_trigger_time = likelihood_config.get('post trigger time', 2.0)
+        
+        # Segment length (total data duration), default 32 seconds
+        segment_length = data_config.get('segment length', 32.0)
+        
+        # Time before event is segment length minus post trigger time
+        t_before = segment_length - post_trigger_time
+        logger.info(f"Using segment length={segment_length}s, post trigger time={post_trigger_time}s, t_before={t_before}s")
+        
+        # Get maximum frequency from quality config, can be per-detector
+        quality_config = config_data.get('quality', {})
+        max_freq_config = quality_config.get('maximum frequency', {})
+        
+        # Determine fmax: if it's a dict (per-detector), use the highest value
+        # Otherwise use the value directly, or default to 1024 Hz
+        if isinstance(max_freq_config, dict):
+            fmax = max(max_freq_config.values()) if max_freq_config else 1024.0
+            logger.info(f"Using maximum frequency from config: {fmax} Hz (highest among detectors)")
+        elif max_freq_config:
+            fmax = float(max_freq_config)
+            logger.info(f"Using maximum frequency from config: {fmax} Hz")
+        else:
+            fmax = 1024.0
+            logger.info(f"Using default maximum frequency: {fmax} Hz")
         
         # Lists to store data for all detectors
         timeseries_list = []
         detector_names = []
         
-        # Process each detector
-        for ifo, frame_file in frame_files.items():
-            # Skip non-string entries (these should not exist in the new structure
-            # where channels are separate, but this provides safety for edge cases)
-            if not isinstance(frame_file, str):
-                logger.warning(f"Skipping non-string entry in frame files: {ifo}")
-                continue
+        # Use try-finally to ensure temporary files are always cleaned up
+        try:
+            # Process each detector
+            for ifo, frame_file in frame_files.items():
+                # Skip non-string entries (these should not exist in the new structure
+                # where channels are separate, but this provides safety for edge cases)
+                if not isinstance(frame_file, str):
+                    logger.warning(f"Skipping non-string entry in frame files: {ifo}")
+                    continue
+                
+                if not os.path.exists(frame_file):
+                    logger.warning(f"Frame file not found for {ifo}: {frame_file}, skipping")
+                    continue
+                
+                # Determine channel name
+                # Use specified channel or default to standard naming
+                channel = channels.get(ifo, f"{ifo}:GWOSC-16KHZ_R1_STRAIN")
+                
+                logger.info(f"Reading {ifo} data from {frame_file}, channel {channel}")
+                
+                try:
+                    # Read the timeseries from the frame file centered on the event.
+                    # The segment extends from (ctime - t_before) to (ctime + post_trigger_time),
+                    # with additional padding on each side for edge effects in filtering/whitening.
+                    start_time = ctime - t_before - post_trigger_time
+                    end_time = ctime + post_trigger_time + post_trigger_time
+                    
+                    timeseries = TimeSeries.read(
+                        frame_file, 
+                        channel, 
+                        start=start_time,
+                        end=end_time,
+                        format='gwf'
+                    )
+                    
+                    logger.info(f"Read {len(timeseries)} samples at {timeseries.sample_rate} Hz for {ifo}")
+                    
+                    # Save to temporary txt file for cogwheel compatibility
+                    # This matches the format cogwheel expects from download_timeseries
+                    # Use a more unique temporary filename with PID
+                    import tempfile
+                    temp_fd, temp_filename = tempfile.mkstemp(suffix=f"-{ifo}-timeseries.txt", text=True)
+                    os.close(temp_fd)  # Close the file descriptor, we'll write with savetxt
+                    
+                    # Save in two-column format: time, strain
+                    times = timeseries.times.value
+                    strain = timeseries.value
+                    np.savetxt(temp_filename, np.column_stack([times, strain]))
+                    
+                    timeseries_list.append(temp_filename)
+                    detector_names.append(ifo)
+                    
+                    logger.info(f"Successfully read data for {ifo}")
+                except Exception as e:
+                    logger.error(f"Failed to read frame file for {ifo}: {e}")
+                    logger.debug(traceback.format_exc())
+                    continue
             
-            if not os.path.exists(frame_file):
-                logger.warning(f"Frame file not found for {ifo}: {frame_file}, skipping")
-                continue
+            if not timeseries_list:
+                logger.error("No valid frame files could be read. Check the warnings and errors above for details on each frame file.")
+                return
             
-            # Determine channel name
-            # Use specified channel or default to standard naming
-            channel = channels.get(ifo, f"{ifo}:GWOSC-16KHZ_R1_STRAIN")
+            # Create EventData from the timeseries files
+            # Use the configurable parameters
+            event_data = data.EventData.from_timeseries(
+                timeseries_list, eventname, detector_names, ctime, 
+                t_before=t_before, fmax=fmax)
+            event_data.to_npz()
             
-            logger.info(f"Reading {ifo} data from {frame_file}, channel {channel}")
-            
-            try:
-                # Read the timeseries from the frame file centered on the event
-                # Read a segment around the event time
-                start_time = ctime - t_before - 2.0  # Extra padding for safety
-                end_time = ctime + t_before + 2.0
-                
-                ts = TimeSeries.read(
-                    frame_file, 
-                    channel, 
-                    start=start_time,
-                    end=end_time,
-                    format='gwf'
-                )
-                
-                logger.info(f"Read {len(ts)} samples at {ts.sample_rate} Hz for {ifo}")
-                
-                # Save to temporary txt file for cogwheel compatibility
-                # This matches the format cogwheel expects from download_timeseries
-                temp_filename = f"{ifo}-timeseries.txt"
-                
-                # Save in two-column format: time, strain
-                times = ts.times.value
-                strain = ts.value
-                np.savetxt(temp_filename, np.column_stack([times, strain]))
-                
-                timeseries_list.append(temp_filename)
-                detector_names.append(ifo)
-                
-                logger.info(f"Successfully read data for {ifo}")
-            except Exception as e:
-                logger.error(f"Failed to read frame file for {ifo}: {e}")
-                logger.debug(traceback.format_exc())
-                continue
-        
-        if not timeseries_list:
-            logger.error("No valid frame files could be read")
-            return
-        
-        # Create EventData from the timeseries files
-        # Use the same parameters as GWOSC download for consistency
-        event_data = data.EventData.from_timeseries(
-            timeseries_list, eventname, detector_names, ctime, 
-            t_before=t_before, fmax=1024.)
-        event_data.to_npz()
-        
-        # Clean up temporary files
-        for temp_file in timeseries_list:
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-        
-        logger.info("Successfully created EventData from frame files")
+            logger.info("Successfully created EventData from frame files")
+        finally:
+            # Clean up temporary files
+            for temp_file in timeseries_list:
+                if os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except Exception as e:
+                        logger.warning(f"Failed to remove temporary file {temp_file}: {e}")
     else:
         # Use GWOSC download
         logger.info("Downloading data from GWOSC")

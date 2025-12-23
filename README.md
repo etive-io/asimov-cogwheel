@@ -34,12 +34,29 @@ data:
     H1: H1:GWOSC-16KHZ_R1_STRAIN
     L1: L1:GWOSC-16KHZ_R1_STRAIN
     V1: V1:GWOSC-16KHZ_R1_STRAIN
+  # Optional: Segment length in seconds (default: 32.0)
+  segment length: 32.0
+
+likelihood:
+  # Optional: Post trigger time in seconds (default: 2.0)
+  # Time after the event to include in the analysis
+  post trigger time: 2.0
+
+quality:
+  # Optional: Maximum frequency in Hz (default: 1024.0)
+  # Can be specified per-detector or as a single value
+  maximum frequency:
+    H1: 1024.0
+    L1: 1024.0
 ```
 
 When frame files are specified:
 - The frame files are read using `gwpy.timeseries.TimeSeries`
 - Strain data is extracted from the specified channels
-- Data is processed in the same way as GWOSC downloads for compatibility
+- Data segment duration is configurable via `data.segment length` (default: 32s)
+- Post-trigger time is configurable via `likelihood.post trigger time` (default: 2s)
+- The time before the event is calculated as: segment length - post trigger time
+- Maximum analysis frequency is configurable via `quality.maximum frequency` (default: 1024 Hz)
 - The `event time` parameter is required to properly center the data
 - If frame files are not specified, the default behavior is to download data from GWOSC
 
