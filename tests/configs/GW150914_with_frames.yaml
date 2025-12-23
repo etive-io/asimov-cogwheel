@@ -1,0 +1,43 @@
+event:
+  name: GW150914
+  event time: 1126259462.4  # GPS time of GW150914
+  fiducial parameters:
+    chirp mass: 30
+    
+waveform:
+  approximant: IMRPhenomXPHM
+
+sampler:
+  live points: 1000
+
+likelihood:
+  marginalisation:
+    - distance
+
+prior:
+  class: MarginalizedDistanceIASPrior
+  distributions:
+    chirp mass:
+      minimum: 10
+      maximum: 40
+
+# Frame files for each interferometer
+# These files contain the strain data in GWF (Gravitational Wave Frame) format
+frame_files:
+  H1: /path/to/H-H1_GWOSC_16KHZ_R1-1126257415-4096.gwf
+  L1: /path/to/L-L1_GWOSC_16KHZ_R1-1126257415-4096.gwf
+  # Optional: Specify custom channel names for each detector
+  # If not specified, defaults to {IFO}:GWOSC-16KHZ_R1_STRAIN
+  channels:
+    H1: H1:GWOSC-16KHZ_R1_STRAIN
+    L1: L1:GWOSC-16KHZ_R1_STRAIN
+
+# Optional: Specify PSD files for each interferometer
+# These can be used in combination with frame files
+# psds:
+#   H1: /path/to/H1_psd.txt
+#   L1: /path/to/L1_psd.txt
+#   whitening_filter:
+#     fmin: 15.0
+#     df_taper: 1.0
+  

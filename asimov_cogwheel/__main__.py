@@ -18,33 +18,119 @@ def cogwheelpipe(ctx):
 @cogwheelpipe.command()
 def data(config):
     """
-    Use cogwheel's own data acquisition routines to download strain data
-    from GWOSC.
+    Acquire strain data either from frame files or GWOSC.
+    
+    If frame files are specified in the configuration, they will be read 
+    using gwpy. Otherwise, cogwheel's own data acquisition routines will 
+    download strain data from GWOSC.
     
     Note: PSDs are computed from the downloaded data using the Welch method.
     If you want to use externally provided PSDs (e.g., from BayesWave), 
     specify them in the configuration file under the 'psds' section.
     """
     from cogwheel import data
-    config = pipeconfig.parse_config(config)
-    eventname = config.get('event', {}).get('name', None)
+    import numpy as np
+    
+    config_data = pipeconfig.parse_config(config)
+    eventname = config_data.get('event', {}).get('name', None)
     logger = logging.getLogger("cogwheelpipe.data")
     LOGLEVEL = os.environ.get('LOGLEVEL', 'INFO').upper()
     logging.basicConfig(level=LOGLEVEL, format="%(asctime)s %(message)s")
     logger.info(f"Using asimov_cogwheel {__version__}")
     logger.info(f"Getting data for {eventname}")
     
-    if not data.EventData.get_filename(eventname).exists():
+    # Check if data already exists
+    if data.EventData.get_filename(eventname).exists():
+        logger.info("Data has already been downloaded for this event.")
+        return
+    
+    # Check if frame files are specified
+    frame_files = config_data.get('frame_files', None)
+    
+    if frame_files:
+        # Use frame files
+        logger.info("Reading data from frame files")
+        from gwpy.timeseries import TimeSeries
+        
+        # Get event time
+        ctime = config_data.get('event', {}).get('event time', None)
+        if ctime is None:
+            logger.error("Event time must be specified when using frame files")
+            return
+        
+        # Get channel names (optional, with defaults)
+        channels = config_data.get('frame_files', {}).get('channels', {})
+        
+        # Lists to store data for all detectors
+        timeseries_list = []
+        detector_names = []
+        
+        # Process each detector
+        for ifo, frame_file in frame_files.items():
+            # Skip non-string entries (e.g., channels dict)
+            if not isinstance(frame_file, str):
+                continue
+            
+            if not os.path.exists(frame_file):
+                logger.warning(f"Frame file not found for {ifo}: {frame_file}, skipping")
+                continue
+            
+            # Determine channel name
+            # Use specified channel or default to standard naming
+            channel = channels.get(ifo, f"{ifo}:GWOSC-16KHZ_R1_STRAIN")
+            
+            logger.info(f"Reading {ifo} data from {frame_file}, channel {channel}")
+            
+            try:
+                # Read the timeseries from the frame file
+                # gwpy will read around the event time
+                ts = TimeSeries.read(frame_file, channel, format='gwf')
+                
+                # Save to temporary txt file for cogwheel compatibility
+                # This matches the format cogwheel expects from download_timeseries
+                temp_filename = f"{ifo}-timeseries.txt"
+                
+                # Save in two-column format: time, strain
+                times = ts.times.value
+                strain = ts.value
+                np.savetxt(temp_filename, np.column_stack([times, strain]))
+                
+                timeseries_list.append(temp_filename)
+                detector_names.append(ifo)
+                
+                logger.info(f"Successfully read data for {ifo}")
+            except Exception as e:
+                logger.error(f"Failed to read frame file for {ifo}: {e}")
+                continue
+        
+        if not timeseries_list:
+            logger.error("No valid frame files could be read")
+            return
+        
+        # Create EventData from the timeseries files
+        event_data = data.EventData.from_timeseries(
+            timeseries_list, eventname, detector_names, ctime, 
+            t_before=16., fmax=1024.)
+        event_data.to_npz()
+        
+        # Clean up temporary files
+        for temp_file in timeseries_list:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+        
+        logger.info("Successfully created EventData from frame files")
+    else:
+        # Use GWOSC download
+        logger.info("Downloading data from GWOSC")
         filenames, detector_names, tgps = data.download_timeseries(eventname)
-        ctime = config.get('event', {}).get('event time', None)
+        ctime = config_data.get('event', {}).get('event time', None)
         if ctime:
             # Use the config time rather than the one from cogwheel's data files.
             tgps = ctime
         event_data = data.EventData.from_timeseries(
             filenames, eventname, detector_names, tgps, t_before=16., fmax=1024.)
         event_data.to_npz()
-    else:
-        logger.info("Data has already been downloaded for this event.")
+
 
 
 @click.option("--config", help="A configuration file.")

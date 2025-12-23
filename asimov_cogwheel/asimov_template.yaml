@@ -46,6 +46,19 @@ prior:
   #     minimum: 10
   #     maximum: 40
 
+{% if production.frame_files %}
+frame_files:
+{% for ifo, frame_file in production.frame_files.items() %}
+  {{ ifo }}: {{ frame_file }}
+{% endfor %}
+{% if production.meta.get('frame_files', {}).get('channels') %}
+  channels:
+{% for ifo, channel in production.meta['frame_files']['channels'].items() %}
+    {{ ifo }}: {{ channel }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
 {% if production.psds %}
 psds:
 {% for ifo, psd_file in production.psds.items() %}
