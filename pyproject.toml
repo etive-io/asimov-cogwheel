@@ -27,6 +27,7 @@ requires-python = ">=3.9"
 dependencies = [
 	     "click",
 	     "asimov>=0.7.0a1",
+	     "htcondor<25",
 	     "lalsuite>=7.14",
 	     "pesummary",
 	     "nbconvert",
