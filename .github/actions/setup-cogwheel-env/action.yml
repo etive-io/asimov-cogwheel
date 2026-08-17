@@ -1,0 +1,64 @@
+name: 'Setup asimov-cogwheel Environment'
+description: 'Install asimov-cogwheel (and its asimov + cogwheel dependencies) with conda'
+inputs:
+  python-version:
+    description: 'Python version to use'
+    default: '3.11'
+    required: false
+runs:
+  using: "composite"
+  steps:
+    - name: Cache conda packages and pip
+      uses: actions/cache@v4
+      with:
+        path: |
+          /usr/share/miniconda/pkgs
+          ~/.cache/pip
+        key: conda-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+        restore-keys: |
+          conda-${{ runner.os }}-
+
+    - name: Set up conda environment
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        miniconda-version: "latest"
+        auto-activate-base: false
+        python-version: ${{ inputs.python-version }}
+        activate-environment: asimov
+        channels: conda-forge
+        use-mamba: true
+
+    - name: Cache asimov-cogwheel conda env
+      id: cache-env
+      uses: actions/cache@v4
+      with:
+        path: /usr/share/miniconda/envs/asimov
+        key: conda-env-asimov-cogwheel-${{ runner.os }}-py${{ inputs.python-version }}-${{ hashFiles('pyproject.toml') }}
+        restore-keys: |
+          conda-env-asimov-cogwheel-${{ runner.os }}-py${{ inputs.python-version }}-
+
+    - name: Install asimov-cogwheel from source
+      shell: bash -e {0}
+      run: |
+        git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+        CONDA_BASE="$("${CONDA_EXE:-conda}" info --base)"
+        CONDA_PYTHON="${CONDA_BASE}/envs/asimov/bin/python"
+        "$CONDA_PYTHON" -m ensurepip --upgrade
+        "$CONDA_PYTHON" -m pip install --force-reinstall -e ".[test]"
+        # Regular (non-editable) installs set explicit, world-readable
+        # permissions from the wheel's RECORD; an editable install's
+        # metadata (entry_points.txt etc.) is instead written fresh by pip
+        # subject to the current process umask. This step runs as root, and
+        # under a restrictive root umask the resulting dist-info can end up
+        # unreadable by `submituser` -- which silently drops this package's
+        # `asimov.pipelines` entry point (asimov's own plugin loader
+        # catches and swallows the failure) rather than erroring here.
+        # Force everything world-readable so submituser can always see it.
+        # Also world-writable: cogwheel caches downloaded strain data as an
+        # .npz file inside its own installed package directory
+        # (cogwheel.data.DATADIR, under site-packages), and that write
+        # needs to succeed as submituser too.
+        chmod -R a+rwX "$CONDA_BASE/envs/asimov"
+        echo "Installed asimov-cogwheel from: $("$CONDA_PYTHON" -c 'import asimov_cogwheel; print(asimov_cogwheel.__file__)')"
+        echo "Installed asimov from: $("$CONDA_PYTHON" -c 'import asimov; print(asimov.__file__)')"
+        echo "Installed cogwheel from: $("$CONDA_PYTHON" -c 'import cogwheel; print(cogwheel.__file__)')"

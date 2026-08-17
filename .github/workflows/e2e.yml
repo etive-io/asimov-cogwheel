@@ -1,0 +1,300 @@
+name: End-to-end test (real cogwheel + PESummary hand-off)
+
+on:
+  push:
+    branches: ['**']
+    tags: ['*']
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: "Cogwheel end-to-end test (HTCondor)"
+    runs-on: ubuntu-latest
+    container:
+      image: htcondor/mini:latest
+      options: --privileged
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: etive-io/actions/setup-htcondor@v1
+
+      - name: Install base tools
+        run: |
+          yum install -y sudo git
+
+      - name: Create submit user
+        uses: etive-io/actions/create-submit-user@v1
+
+      - name: Ensure submituser can access workspace
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/e2e_project"
+          chmod -R a+rwX "$GITHUB_WORKSPACE"
+
+      - name: Setup asimov-cogwheel Environment
+        uses: ./.github/actions/setup-cogwheel-env
+        with:
+          python-version: "3.11"
+
+      # PESummary post-processing runs as a separate downstream analysis
+      # (wired up via `needs:`) rather than being invoked directly by
+      # Cogwheel, so asimov-pesummary is installed here as an independent
+      # plugin into the same conda env, alongside asimov-cogwheel.
+      - name: Install asimov-pesummary for the post-processing leg
+        shell: bash -e {0}
+        run: |
+          CONDA_BASE="$("${CONDA_EXE:-conda}" info --base)"
+          CONDA_PYTHON="${CONDA_BASE}/envs/asimov/bin/python"
+          "$CONDA_PYTHON" -m pip install asimov-pesummary
+          chmod -R a+rX "$CONDA_BASE/envs/asimov"
+          echo "Installed asimov-pesummary from: $("$CONDA_PYTHON" -c 'import asimov_pesummary; print(asimov_pesummary.__file__)')"
+
+      - name: Set up git
+        run: |
+          su - submituser <<SUBMITUSER
+          set -euo pipefail
+          git config --global init.defaultBranch master
+          git config --global user.email "you@example.com"
+          git config --global user.name "Your Name"
+          SUBMITUSER
+
+      - name: Create asimov project
+        uses: etive-io/actions/run-asimov-command@v1
+        with:
+          script: cd e2e_project && asimov init "E2E Test Project"
+
+      - name: Configure asimov environment and condor user
+        uses: etive-io/actions/run-asimov-command@v1
+        with:
+          script: |
+            cd e2e_project
+            if [ -z "$CONDA_PREFIX" ] || [ ! -x "$CONDA_PREFIX/bin/cogwheelpipe" ]; then
+              echo "::error::CONDA_PREFIX ('$CONDA_PREFIX') does not contain bin/cogwheelpipe" >&2
+              exit 1
+            fi
+            asimov configuration update pipelines/environment "$CONDA_PREFIX"
+            asimov configuration update condor/user submituser
+
+      - name: Diagnose asimov.pipelines entry-point discovery as submituser
+        uses: etive-io/actions/run-asimov-command@v1
+        with:
+          script: |
+            python3 -c "
+            from importlib.metadata import entry_points
+            eps = [ep for ep in entry_points(group='asimov.pipelines') if ep.value.startswith('asimov_cogwheel') or ep.value.startswith('asimov_pesummary')]
+            print('Discovered entry points:', eps)
+            for ep in eps:
+                try:
+                    ep.load()
+                    print(f'  {ep.name}: loaded OK')
+                except Exception as e:
+                    print(f'  {ep.name}: FAILED TO LOAD: {e!r}')
+            "
+
+      - name: Apply GW150914 event
+        uses: etive-io/actions/run-asimov-command@v1
+        with:
+          script: |
+            cd e2e_project
+            asimov apply -f "$GITHUB_WORKSPACE/tests/test_blueprints/gw150914_event.yaml"
+
+      # HTCondor jobs in this container have no network/DNS access (confirmed:
+      # pip install reaches PyPI fine from this same step's context, but the
+      # `cogwheelpipe data` condor job fails with NameResolutionError trying
+      # to reach gwosc.org) -- matching why asimov-gwdata's own CI uses a
+      # local mock datafind server rather than live GWOSC, and
+      # asimov-lalinference's e2e avoids real data access entirely. Cogwheel
+      # has no such mock; instead, pre-fetch and cache the real GW150914
+      # strain here (a plain script step, not a condor job, so it has
+      # working network), replicating exactly what `cogwheelpipe data`'s
+      # GWOSC-download branch does. The condor `data` node then finds
+      # EventData.get_filename(eventname) already cached and skips its own
+      # (network-dead) download attempt.
+      # cogwheel.data.download_timeseries() unconditionally tries every
+      # detector in gw_utils.DETECTORS (H, L, V) and is *meant* to quietly
+      # skip ones with no data via `except ValueError: pass` around its
+      # per-detector fetch -- but the installed gwpy version now raises a
+      # gwpy.io.registry.GetExceptionGroup wrapping that ValueError instead
+      # of the ValueError directly, so the except clause doesn't catch it
+      # and V1 (which wasn't observing during O1/GW150914) crashes the
+      # whole fetch. Bypass download_timeseries() and fetch H1/L1 directly
+      # instead of hitting this cogwheel/gwpy version mismatch.
+      # gwosc.org has proven intermittently flaky from this runner/container
+      # (a plain script step reached it fine on one attempt, then hit a bare
+      # ConnectTimeout on the very next) -- cogwheel's own internal tenacity
+      # retry isn't enough to ride that out, so retry per-detector here too,
+      # skipping any file that already downloaded successfully.
+      - name: Pre-fetch GW150914 strain data (condor jobs have no network here)
+        uses: etive-io/actions/run-asimov-command@v1
+        with:
+          script: |
+            python3 -c "
+            import pathlib
+            import time
+            from cogwheel import data, utils
+
+            eventname = 'GW150914'
+            tgps = 1126259462.4
+            detectors_to_fetch = ('H', 'L')  # V1 wasn't observing during O1
+            max_attempts = 5
+
+            if data.EventData.get_filename(eventname).exists():
+                print('Data already cached, skipping fetch.')
+            else:
+                outdir = pathlib.Path(data.GWOSC_FILES_DIR/eventname)
+                utils.mkdirs(outdir)
+                filenames = {}
+                for det in detectors_to_fetch:
+                    path = outdir/f'{det}_{eventname}.hdf5'
+                    for attempt in range(1, max_attempts + 1):
+                        try:
+                            timeseries = data._fetch_open_data(det, tgps, (-2048, 2048))
+                            timeseries.write(path)
+                            filenames[det] = path
+                            break
+                        except Exception as e:
+                            print(f'Attempt {attempt}/{max_attempts} to fetch {det} failed: {e!r}')
+                            if attempt == max_attempts:
+                                raise
+                            time.sleep(15)
+                filenames = [filenames[det] for det in detectors_to_fetch]
+                detector_names = tuple(p.name[0] for p in filenames)
+                event_data = data.EventData.from_timeseries(
+                    filenames, eventname, detector_names, tgps, t_before=16., fmax=1024.)
+                event_data.to_npz()
+                print('Fetched and cached strain data for', eventname, 'detectors:', detector_names)
+            "
+
+      - name: Add and build the real Cogwheel production
+        uses: etive-io/actions/run-asimov-command@v1
+        with:
+          script: |
+            cd e2e_project
+            asimov apply -f "$GITHUB_WORKSPACE/tests/test_blueprints/cogwheel_production.yaml" -e GW150914
+            asimov manage build submit
+
+      # This is the real completion criterion Cogwheel.detect_completion()
+      # checks for -- not a smoke-test proxy. Reaching it means cogwheel
+      # genuinely downloaded real GW150914 strain from GWOSC, ran a (reduced
+      # settings) real Nautilus sampling job, and converted the result to a
+      # real PESummary-format metafile.
+      - name: Wait for real posterior samples
+        uses: etive-io/actions/wait-for-files@v1
+        with:
+          patterns: "posterior_samples.h5"
+          directory: "working/GW150914/cogwheel-quicktest"
+          timeout: "1800"
+          interval: "20"
+          working-directory: "e2e_project"
+
+      - name: Run asimov monitor for the Cogwheel production
+        uses: etive-io/actions/run-asimov-command@v1
+        with:
+          script: cd e2e_project && asimov monitor
+
+      # Regression check for the actual bug this session fixes:
+      # after_completion() used to import asimov.pipeline.PESummaryPipeline
+      # (removed from core as of 0.7 -- every pipeline is now an installable
+      # plugin) and instantiate it directly. It must now just mark the
+      # production finished and leave PESummary hand-off to a separate
+      # `needs:`-wired blueprint.
+      - name: Confirm the Cogwheel production is marked finished
+        uses: etive-io/actions/run-asimov-command@v1
+        with:
+          script: |
+            cd e2e_project
+            asimov monitor | tee monitor_output.txt
+            if grep -qi "PESummaryPipeline\|ImportError\|AttributeError" monitor_output.txt; then
+              echo "::error::Found a PESummaryPipeline-related crash in monitor output"
+              cat monitor_output.txt
+              exit 1
+            fi
+
+      # PESummary's own build_dag still reads its production's config from
+      # a seeded ini in the event repository (independent of how it learns
+      # about cogwheel's samples, which comes through
+      # Cogwheel.collect_assets() / needs: instead).
+      - name: Seed the pesummary-post config ini fixture
+        uses: etive-io/actions/run-asimov-command@v1
+        with:
+          script: |
+            cd e2e_project/checkouts/GW150914
+            mkdir -p analyses
+            cat > analyses/pesummary-post.ini << 'EOF'
+            [engine]
+
+            run = pesummary-post
+            webdir = web_directory_of_run
+            summrypages_executable = pesummary
+            EOF
+            git add analyses/pesummary-post.ini
+            git commit -m "Seed pesummary-post ini fixture"
+
+      - name: Add and build the downstream PESummary production
+        uses: etive-io/actions/run-asimov-command@v1
+        with:
+          script: |
+            cd e2e_project
+            asimov apply -f "$GITHUB_WORKSPACE/tests/test_blueprints/pesummary_production.yaml" -e GW150914
+            asimov manage build submit
+
+      # The regression proof for point 1's actual change: PESummary's
+      # --samples argument is populated from
+      # production._previous_assets()["samples"], which resolves through
+      # `needs: [cogwheel-quicktest]` to Cogwheel.collect_assets(). If that
+      # hand-off is broken, PESummary either fails to build/submit or
+      # produces no output here.
+      - name: Wait for real summarypages output
+        uses: etive-io/actions/wait-for-files@v1
+        with:
+          patterns: "posterior_samples.h5"
+          directory: "pages/GW150914/pesummary-post/pesummary/samples"
+          timeout: "600"
+          interval: "15"
+          working-directory: "e2e_project"
+
+      - name: Run asimov monitor for the PESummary production
+        uses: etive-io/actions/run-asimov-command@v1
+        with:
+          script: cd e2e_project && asimov monitor
+
+      - name: Verify the PESummary output is genuinely readable
+        uses: etive-io/actions/run-asimov-command@v1
+        with:
+          script: |
+            cd e2e_project
+            python3 -c "
+            import h5py
+            path = 'pages/GW150914/pesummary-post/pesummary/samples/posterior_samples.h5'
+            with h5py.File(path, 'r') as f:
+                assert len(f.keys()) > 0, 'PESummary output has no top-level groups'
+                print('PESummary output groups:', list(f.keys()))
+            "
+
+      - name: Upload summarypages site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: summarypages-site
+          path: e2e_project/pages/GW150914/pesummary-post/pesummary
+          retention-days: 5
+
+      - name: Archive artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-debug
+          path: |
+            e2e_project/.asimov/
+            e2e_project/working/
+            e2e_project/checkouts/
+            e2e_project/pages/
+          retention-days: 5

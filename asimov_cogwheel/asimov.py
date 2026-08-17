@@ -5,11 +5,9 @@ import importlib
 import configparser
 import os
 import glob
-import numpy as np
 from asimov import logger, config
 from asimov.utils import set_directory
-from asimov.pipeline import Pipeline, PipelineException, PipelineLogger, PESummaryPipeline
-#from asimov.pipelines.pesummary import PESummary as PESummaryPipeline
+from asimov.pipeline import Pipeline, PipelineException
 
 import htcondor
 from htcondor import dags
@@ -31,7 +29,10 @@ class Cogwheel(Pipeline):
         self.logger = logger
 
         if not production.pipeline.lower() == self.name:
-            raise PipelineException
+            raise PipelineException(
+                f"Production pipeline '{production.pipeline}' does not match "
+                f"'{self.name}'"
+            )
 
 
     def build_dag(self, dryrun=False):
@@ -76,7 +77,7 @@ class Cogwheel(Pipeline):
             request_disk='10GB',
             getenv="True",
             accounting_group_user=config.get('condor', 'user'),
-            accounting_group=self.production.meta['scheduler']["accounting group"]
+            accounting_group=self.production.meta.get('scheduler', {}).get("accounting group", "default")
         )
         data_layer = dag.layer(
             name='cogwheelpipe-data',
@@ -95,7 +96,7 @@ class Cogwheel(Pipeline):
             request_disk='10GB',
             getenv="True",
             accounting_group_user=config.get('condor', 'user'),
-            accounting_group=self.production.meta['scheduler']["accounting group"]
+            accounting_group=self.production.meta.get('scheduler', {}).get("accounting group", "default")
         )
         analysis_layer = data_layer.child_layer(
             name='cogwheelpipe-inference',
@@ -114,7 +115,7 @@ class Cogwheel(Pipeline):
             request_disk='10GB',
             getenv="True",
             accounting_group_user=config.get('condor', 'user'),
-            accounting_group=self.production.meta['scheduler']["accounting group"]
+            accounting_group=self.production.meta.get('scheduler', {}).get("accounting group", "default")
         )
         results_layer = analysis_layer.child_layer(
             name='cogwheelpipe-results',
@@ -151,6 +152,7 @@ class Cogwheel(Pipeline):
             cluster_id = schedd.submit(dag_submit).cluster()
 
         self.clusterid = cluster_id
+        return cluster_id
 
     def detect_completion(self):
         """
@@ -167,22 +169,27 @@ class Cogwheel(Pipeline):
             return False
 
     def after_completion(self):
-        # Check if PSDs were already provided in the production metadata
-        if not hasattr(self.production, 'psds') or not self.production.psds:
-            # Fallback to fake PSDs for backward compatibility
-            # In the future, these should be extracted from the analysis results
-            self.logger.warning("No PSDs found in production metadata, using placeholder PSDs")
-            self.production.psds = {"L1": "fake.txt", "H1": "fake.txt"}
-            np.savetxt("fake.txt", np.vstack([np.linspace(1,100, 100), np.ones(100)]).T )
-        else:
-            self.logger.info(f"Using PSDs from production: {self.production.psds}")
-        
-        post_pipeline = PESummaryPipeline(production=self.production)
-        self.logger.info("Job has completed. Running PE Summary.")
-        cluster = post_pipeline.submit_dag()
-        self.production.meta["job id"] = int(cluster)
-        self.production.status = "processing"
+        """
+        Mark the production finished once the DAG (data -> inference ->
+        results) has completed. PESummary post-processing is no longer
+        triggered directly from here -- it runs as a separate downstream
+        analysis wired up via the blueprint's `needs:` field, and picks up
+        this production's outputs through `collect_assets()` /
+        `_previous_assets()`.
+        """
+        self.logger.info("Job has completed.")
+        self.production.status = "finished"
         self.production.event.update_data()
+
+    def collect_assets(self):
+        """
+        Gather this production's results assets, so that a downstream
+        production (e.g. a PESummary post-processing production wired up via
+        `needs:`) can pick them up through `production._previous_assets()`.
+        """
+        return {
+            "samples": self.samples(),
+        }
 
     def samples(self, absolute=False):
         results_dir = glob.glob(f"{self.production.rundir}/posterior_samples.h5")

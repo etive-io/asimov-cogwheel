@@ -23,14 +23,16 @@ classifiers = [
 	"Programming Language :: Python :: 3",
 	"Operating System :: OS Independent"
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
 	     "click",
-	     "asimov>=0.6.1",
+	     "asimov>=0.7.0a1",
+	     "htcondor<25",
 	     "lalsuite>=7.14",
 	     "pesummary",
 	     "nbconvert",
 	     "bilby",
+	     "cogwheel-pe",
 	     "gwpy",
 ]
 
@@ -38,6 +40,10 @@ dependencies = [
 docs = [
 	"sphinx",
 	"kentigern",
+]
+test = [
+	"pytest",
+	"pytest-cov",
 ]
 
 [project.scripts]
@@ -54,3 +60,6 @@ packages = [
 
 [project.entry-points.'asimov.pipelines']
 cogwheel = 'asimov_cogwheel.asimov:Cogwheel'
+
+[tool.pytest.ini_options]
+addopts = "--cov=asimov_cogwheel --cov-report=html --cov-report=term"

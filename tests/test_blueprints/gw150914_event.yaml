@@ -1,0 +1,7 @@
+# A minimal event for the asimov-cogwheel end-to-end test. cogwheel's own
+# `cogwheelpipe data` step downloads real public strain data directly from
+# GWOSC for this event (asimov_cogwheel/__main__.py's `data` command calls
+# cogwheel.data.download_timeseries(eventname)), so the event name must be
+# a GWOSC-recognised short name.
+kind: event
+name: GW150914

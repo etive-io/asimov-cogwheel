@@ -1,0 +1,19 @@
+# Test blueprint for the downstream PESummary post-processing production.
+# `needs:` the cogwheel production and picks up its samples via
+# Cogwheel.collect_assets() / Analysis._previous_assets() -- this is the
+# concrete regression test for the change that made Cogwheel agnostic of
+# PESummary (it no longer instantiates asimov.pipeline.PESummaryPipeline --
+# removed from core asimov 0.7 -- directly from after_completion()).
+kind: analysis
+name: pesummary-post
+pipeline: pesummary
+comment: "PESummary end-to-end test production, consuming cogwheel's output via needs:"
+status: ready
+needs:
+  - cogwheel-quicktest
+waveform:
+  approximant: IMRPhenomD
+  reference frequency: 20
+  minimum frequency:
+    H1: 20
+    L1: 20

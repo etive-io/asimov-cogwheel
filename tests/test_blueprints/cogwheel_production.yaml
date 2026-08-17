@@ -1,0 +1,30 @@
+# Test blueprint for the real Cogwheel production under test. Sampler
+# settings are turned down for CI speed -- this is a smoke test, not a
+# science-quality run, and the exact nlive here may need retuning based on
+# real e2e timing.
+#
+# Deliberately no `interferometers` / per-detector `psds` here: the
+# rendered `detectors:` block in asimov_template.yaml is left empty, so
+# EventData.from_timeseries_psds() (asimov_cogwheel/data.py) falls back to
+# measuring each detector's PSD directly from the downloaded strain, rather
+# than depending on asimov-bayeswave output. Real PSD/frame wiring from
+# asimov-gwdata/asimov-bayeswave is deferred (see project notes on point 3).
+kind: analysis
+name: cogwheel-quicktest
+pipeline: cogwheel
+comment: Cogwheel end-to-end test production (real GWOSC data, reduced settings)
+status: ready
+event time: 1126259462.4
+waveform:
+  approximant: IMRPhenomD
+likelihood:
+  relative binning:
+    fiducial parameters:
+      chirp mass: 30
+priors:
+  class: CartesianIntrinsicIASPrior
+sampler:
+  sampler kwargs:
+    nlive: 50
+scheduler:
+  accounting group: ligo.dev.o4.cbc.pe.bilby
