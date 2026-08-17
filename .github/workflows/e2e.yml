@@ -107,6 +107,36 @@ jobs:
             cd e2e_project
             asimov apply -f "$GITHUB_WORKSPACE/tests/test_blueprints/gw150914_event.yaml"
 
+      # HTCondor jobs in this container have no network/DNS access (confirmed:
+      # pip install reaches PyPI fine from this same step's context, but the
+      # `cogwheelpipe data` condor job fails with NameResolutionError trying
+      # to reach gwosc.org) -- matching why asimov-gwdata's own CI uses a
+      # local mock datafind server rather than live GWOSC, and
+      # asimov-lalinference's e2e avoids real data access entirely. Cogwheel
+      # has no such mock; instead, pre-fetch and cache the real GW150914
+      # strain here (a plain script step, not a condor job, so it has
+      # working network), replicating exactly what `cogwheelpipe data`'s
+      # GWOSC-download branch does. The condor `data` node then finds
+      # EventData.get_filename(eventname) already cached and skips its own
+      # (network-dead) download attempt.
+      - name: Pre-fetch GW150914 strain data (condor jobs have no network here)
+        uses: etive-io/actions/run-asimov-command@v1
+        with:
+          script: |
+            python3 -c "
+            from cogwheel import data
+            eventname = 'GW150914'
+            tgps = 1126259462.4
+            if data.EventData.get_filename(eventname).exists():
+                print('Data already cached, skipping fetch.')
+            else:
+                filenames, detector_names, _ = data.download_timeseries(eventname, tgps=tgps)
+                event_data = data.EventData.from_timeseries(
+                    filenames, eventname, detector_names, tgps, t_before=16., fmax=1024.)
+                event_data.to_npz()
+                print('Fetched and cached strain data for', eventname)
+            "
+
       - name: Add and build the real Cogwheel production
         uses: etive-io/actions/run-asimov-command@v1
         with:
