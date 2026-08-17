@@ -84,6 +84,39 @@ jobs:
             asimov configuration update pipelines/environment "$CONDA_PREFIX"
             asimov configuration update condor/user submituser
 
+      # htcondor is imported directly at module scope by asimov_cogwheel.asimov
+      # (it isn't installed as root by this point -- it was already
+      # "Successfully installed" during Setup asimov-cogwheel Environment,
+      # as a transitive dependency of asimov itself). If submituser can't
+      # import it despite that, this narrows down whether it's a
+      # visibility/permissions issue (file exists, submituser can't read/
+      # traverse to it) or something else (wrong interpreter, wrong env).
+      - name: Debug htcondor visibility for submituser
+        uses: etive-io/actions/run-asimov-command@v1
+        with:
+          script: |
+            echo "--- as submituser ---"
+            python3 -c "
+            import sys
+            print('sys.executable:', sys.executable)
+            print('sys.path:', sys.path)
+            try:
+                import htcondor
+                print('htcondor imported OK from:', htcondor.__file__)
+            except Exception as e:
+                print('htcondor import FAILED:', repr(e))
+            "
+            echo "--- htcondor package dir permissions (as submituser) ---"
+            python3 -c "
+            import sysconfig, os
+            sp = sysconfig.get_paths()['purelib']
+            print('site-packages:', sp)
+            for entry in sorted(os.listdir(sp)):
+                if 'htcondor' in entry.lower():
+                    print(entry)
+            " || true
+            find "$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')" -maxdepth 1 -iname "*htcondor*" -exec ls -la {} \; || true
+
       - name: Diagnose asimov.pipelines entry-point discovery as submituser
         uses: etive-io/actions/run-asimov-command@v1
         with:
