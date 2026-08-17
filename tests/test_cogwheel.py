@@ -232,6 +232,46 @@ class TestCogwheelBuildDag(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# TestCogwheelSubmitDag
+#
+# Regression test: asimov/cli/manage.py's `submit` command does
+# `cluster_id = pipe.submit_dag(dryrun=dryrun)` and then
+# `production.job_id = int(job_id_value)` -- it relies on submit_dag()'s
+# *return value*, not just a `self.clusterid` side-effect assignment.
+# Without a `return`, this crashes with
+# TypeError: int() argument must be ... not 'NoneType'.
+# ---------------------------------------------------------------------------
+
+class TestCogwheelSubmitDag(unittest.TestCase):
+
+    def setUp(self):
+        self.production = make_production(rundir="/working/GW150914/Prod0")
+
+        self.mock_config = patch("asimov_cogwheel.asimov.config").start()
+        self.mock_config.get.side_effect = _config_get
+
+        self.mock_set_directory = patch(
+            "asimov_cogwheel.asimov.set_directory"
+        ).start()
+        self.mock_set_directory.return_value.__enter__ = MagicMock()
+        self.mock_set_directory.return_value.__exit__ = MagicMock(return_value=False)
+
+        self.mock_htcondor = patch("asimov_cogwheel.asimov.htcondor").start()
+        self.mock_htcondor.Schedd.return_value.submit.return_value.cluster.return_value = 42
+
+        self.addCleanup(patch.stopall)
+        self.pipeline = Cogwheel(self.production)
+
+    def test_returns_cluster_id(self):
+        result = self.pipeline.submit_dag(dryrun=False)
+        self.assertEqual(result, 42)
+
+    def test_sets_clusterid_attribute(self):
+        self.pipeline.submit_dag(dryrun=False)
+        self.assertEqual(self.pipeline.clusterid, 42)
+
+
+# ---------------------------------------------------------------------------
 # TestCogwheelCollectAssets
 # ---------------------------------------------------------------------------
 

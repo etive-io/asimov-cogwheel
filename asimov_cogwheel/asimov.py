@@ -152,6 +152,7 @@ class Cogwheel(Pipeline):
             cluster_id = schedd.submit(dag_submit).cluster()
 
         self.clusterid = cluster_id
+        return cluster_id
 
     def detect_completion(self):
         """
