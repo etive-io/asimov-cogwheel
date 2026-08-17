@@ -128,29 +128,45 @@ jobs:
       # and V1 (which wasn't observing during O1/GW150914) crashes the
       # whole fetch. Bypass download_timeseries() and fetch H1/L1 directly
       # instead of hitting this cogwheel/gwpy version mismatch.
+      # gwosc.org has proven intermittently flaky from this runner/container
+      # (a plain script step reached it fine on one attempt, then hit a bare
+      # ConnectTimeout on the very next) -- cogwheel's own internal tenacity
+      # retry isn't enough to ride that out, so retry per-detector here too,
+      # skipping any file that already downloaded successfully.
       - name: Pre-fetch GW150914 strain data (condor jobs have no network here)
         uses: etive-io/actions/run-asimov-command@v1
         with:
           script: |
             python3 -c "
             import pathlib
+            import time
             from cogwheel import data, utils
 
             eventname = 'GW150914'
             tgps = 1126259462.4
             detectors_to_fetch = ('H', 'L')  # V1 wasn't observing during O1
+            max_attempts = 5
 
             if data.EventData.get_filename(eventname).exists():
                 print('Data already cached, skipping fetch.')
             else:
                 outdir = pathlib.Path(data.GWOSC_FILES_DIR/eventname)
                 utils.mkdirs(outdir)
-                filenames = []
+                filenames = {}
                 for det in detectors_to_fetch:
                     path = outdir/f'{det}_{eventname}.hdf5'
-                    timeseries = data._fetch_open_data(det, tgps, (-2048, 2048))
-                    timeseries.write(path)
-                    filenames.append(path)
+                    for attempt in range(1, max_attempts + 1):
+                        try:
+                            timeseries = data._fetch_open_data(det, tgps, (-2048, 2048))
+                            timeseries.write(path)
+                            filenames[det] = path
+                            break
+                        except Exception as e:
+                            print(f'Attempt {attempt}/{max_attempts} to fetch {det} failed: {e!r}')
+                            if attempt == max_attempts:
+                                raise
+                            time.sleep(15)
+                filenames = [filenames[det] for det in detectors_to_fetch]
                 detector_names = tuple(p.name[0] for p in filenames)
                 event_data = data.EventData.from_timeseries(
                     filenames, eventname, detector_names, tgps, t_before=16., fmax=1024.)
